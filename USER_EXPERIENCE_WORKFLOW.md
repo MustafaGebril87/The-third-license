@@ -41,7 +41,6 @@ After login, the **Navbar** is always visible with links to:
 - My Tokens
 - Marketplace
 - Admin Panel
-- Git Settings (profile)
 - Logout
 
 All API requests automatically carry `Authorization: Bearer <token>` via the Axios interceptor in `src/api/axios.js`.
@@ -62,10 +61,6 @@ All API requests automatically carry `Authorization: Bearer <token>` via the Axi
   - **Clone** → `POST /companies/{repoId}/clone`
   - **Pull** → `GET /contributions/pull-file?repositoryId=…&branch=…&filePath=…&mode=pull`
     - If the pull triggers a merge conflict (HTTP 409/500), an alert is shown and a merge request is automatically created on the backend
-
-### Git Credentials (`/profile/git`)
-- Set or update the **Git Username** and **Git Token** used for JGit operations → `PUT /users/update-git`
-- Must be configured before cloning or pushing
 
 ---
 
@@ -179,8 +174,7 @@ Before redirecting, the app saves to `localStorage`:
 
 ### Developer (Contributor)
 ```
-Register → Login → Set Git Credentials (/profile/git)
-→ Browse /companies/all → Request Access
+Register → Login → Browse /companies/all → Request Access
 → Wait for owner approval
 → Clone repo, Push files (/push)
 → Resolve conflicts if needed (/merge-conflict)
@@ -230,4 +224,3 @@ Login → /companies → Create company
 | `/paypal/success` | PayPal Success | No |
 | `/paypal/cancel` | PayPal Cancel | No |
 | `/admin` | Admin Dashboard | Yes |
-| `/profile/git` | Git Credentials | Yes |

@@ -16,8 +16,7 @@ const Navbar = () => {
       <div>
         <ul style={{ display: 'flex', listStyle: 'none', margin: 0, padding: 0 }}>
           <li><Link to="/dashboard">Dashboard</Link></li>
-		  <li><Link to="/profile/git" style={{ marginRight: '1rem' }}>Git Settings</Link></li>
-		  <li><Link to="/companies/all">All Companies</Link></li>
+<li><Link to="/companies/all">All Companies</Link></li>
           <li><Link to="/companies">My Companies</Link></li>
           <li><Link to="/admin">Admin</Link></li>
           <li><Link to="/push">Push Files</Link></li>

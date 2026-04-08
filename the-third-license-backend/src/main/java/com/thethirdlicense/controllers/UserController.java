@@ -7,7 +7,6 @@ import com.thethirdlicense.security.UserPrincipal;
 import com.thethirdlicense.services.UserService;
 import com.thethirdlicense.controllers.UserDTO;
 import com.thethirdlicense.exceptions.ResourceNotFoundException;
-import com.thethirdlicense.exceptions.UnauthorizedException;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -49,9 +48,6 @@ public class UserController {
         user.setPassword(passwordEncoder.encode(userDTO.getPassword()));
         user.setEmail(userDTO.getEmail());
         user.setFullName(userDTO.getFullName());
-        user.setGitUsername(userDTO.getGitUsername());
-        user.setGitToken(userDTO.getGitToken());
-
         userRepository.save(user);
         return ResponseEntity.ok("User registered successfully.");
     }
@@ -96,23 +92,6 @@ public class UserController {
         return user.map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    // 8. Update Git credentials
-    @PutMapping("/update-git")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> updateGitCredentials(@RequestBody UserDTO dto, Authentication auth) {
-        if (auth == null || auth.getName() == null) {
-            throw new UnauthorizedException("Invalid authentication");
-        }
-        log.debug("Received DTO: {}", dto);
-        User user = userRepository.findByUsername(auth.getName())
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-
-        user.setGitUsername(dto.getGitUsername());
-        user.setGitToken(dto.getGitToken());
-        userRepository.save(user);
-
-        return ResponseEntity.ok("Git credentials updated.");
-    }
     @GetMapping("/users/me")
     public ResponseEntity<?> getCurrentUser() {
         Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();

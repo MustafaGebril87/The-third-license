@@ -12,7 +12,6 @@ import MyTokens from './pages/Currency/MyTokens';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import Landing from './pages/Landing';
 import Layout from './layout/Layout';
-import GitCredentials from './pages/Profile/GitCredentials';
 import AllCompanies from './components/AllCompanies';
 import MergeConflictResolver from '../src/Merge/MergeConflictResolver'; // adjust path if different
 import ConfirmPurchase from './pages/Currency/ConfirmPurchase';
@@ -41,16 +40,6 @@ console.log("App rendered");
 		<Route path="/companies/all" element={<AllCompanies />} />
 		<Route path="/coin-market/success" element={<ConfirmPurchase />} />
 		
-		<Route
-		  path="/profile/git"
-		  element={
-			<PrivateRoute>
-				<GitCredentials />
-			</PrivateRoute>
-		  }
-		/>
-		
-	
 <Route
   path="/pages/Currency/MarketplaceCoins"
   element={

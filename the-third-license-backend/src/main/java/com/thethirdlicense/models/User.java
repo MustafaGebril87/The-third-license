@@ -77,12 +77,6 @@ public class User implements UserDetails {  //  Implement UserDetails
             inverseJoinColumns = @JoinColumn(name = "repository_id")
     )
     private Set<Repository_> contributions = new HashSet<>();
-    @Column(name = "git_username")
-    private String gitUsername;
-
-    @Column(name = "git_token")
-    private String gitToken;
-
     // Constructors
     public User() {}
 
@@ -98,22 +92,6 @@ public class User implements UserDetails {  //  Implement UserDetails
     }
     
   
-    public String getGitUsername() {
-        return gitUsername;
-    }
-
-    public void setGitUsername(String gitUsername) {
-        this.gitUsername = gitUsername;
-    }
-
-    public String getGitToken() {
-        return gitToken;
-    }
-
-    public void setGitToken(String gitToken) {
-        this.gitToken = gitToken;
-    }
-
     //  Implemented UserDetails Methods
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

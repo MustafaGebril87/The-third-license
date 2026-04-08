@@ -15,9 +15,6 @@ public class UserDTO {
     private String email;
     private String fullName;
 
-    private String gitUsername;
-    private String gitToken;
-
     // === Getters and Setters ===
     public UserDTO() {} 
     public UserDTO(User user) {
@@ -60,19 +57,4 @@ public class UserDTO {
         this.fullName = fullName;
     }
 
-    public String getGitUsername() {
-        return gitUsername;
-    }
-
-    public void setGitUsername(String gitUsername) {
-        this.gitUsername = gitUsername;
-    }
-
-    public String getGitToken() {
-        return gitToken;
-    }
-
-    public void setGitToken(String gitToken) {
-        this.gitToken = gitToken;
-    }
 }

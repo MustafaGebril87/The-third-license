@@ -2,8 +2,6 @@ package com.thethirdlicense.services;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.revwalk.RevCommit;
-import org.eclipse.jgit.transport.CredentialsProvider;
-import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -64,15 +62,9 @@ public class GitService {
         String clonePath = "C:\\repos\\cloned-repos\\" + repo.getName() + "-" + user.getUsername();
         File cloneDir = new File(clonePath);
 
-        String gitUsername = user.getGitUsername();
-        String gitToken = user.getGitToken();
-
-        CredentialsProvider credentialsProvider = new UsernamePasswordCredentialsProvider(gitUsername, gitToken);
-
         Git.cloneRepository()
             .setURI(repo.getGitUrl())
             .setDirectory(cloneDir)
-            .setCredentialsProvider(credentialsProvider)
             .call();
 
         return "Repository cloned successfully at: " + clonePath;
