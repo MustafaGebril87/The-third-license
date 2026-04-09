@@ -4,7 +4,16 @@
       "Bash(mvn test:*)",
       "Bash(npm install:*)",
       "Bash(npm test:*)",
-      "Bash(npx vitest:*)"
+      "Bash(npx vitest:*)",
+      "Bash(pg_isready -h localhost -p 5432)",
+      "Bash(psql -U postgres -c \"\\\\l\")",
+      "Bash(echo \"Checking postgres...\" net start postgresql*)",
+      "Bash(node:*)",
+      "Bash(xargs cat:*)",
+      "Bash(xargs grep:*)",
+      "Bash(mvn spring-boot:run:*)",
+      "Bash(netstat -ano)",
+      "Bash(taskkill:*)"
     ]
   }
 }

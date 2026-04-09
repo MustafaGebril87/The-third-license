@@ -1,44 +1,30 @@
-import React from 'react'; // ✅ Required for JSX
-import { createContext, useContext, useState, useEffect } from 'react';
-import { jwtDecode } from 'jwt-decode'; // ✅ Correct import
+import React from 'react';
+import { createContext, useContext, useState } from 'react';
+import api from '../api/axios';
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [authToken, setAuthToken] = useState(localStorage.getItem('token'));
-  const [refreshToken, setRefreshToken] = useState(localStorage.getItem('refreshToken'));
-  const [user, setUser] = useState(authToken ? jwtDecode(authToken) : null);
+  // User info is kept in memory only — tokens live in HttpOnly cookies set by the server
+  const [user, setUser] = useState(null);
 
-  useEffect(() => {
-    if (authToken) {
-      try {
-        const decoded = jwtDecode(authToken);
-        setUser(decoded);
-      } catch (err) {
-        console.error("Invalid token:", err);
-        logout();
-      }
-    }
-  }, [authToken]);
-
-  const login = (token, refresh) => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('refreshToken', refresh);
-    setAuthToken(token);
-    setRefreshToken(refresh);
-    setUser(jwtDecode(token));
+  const login = (userData) => {
+    // userData is the response body from POST /api/auth/login
+    // { id, username, email, roles }
+    setUser(userData);
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
-    setAuthToken(null);
-    setRefreshToken(null);
+  const logout = async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch (_) {
+      // Proceed regardless — cookies will expire naturally
+    }
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ authToken, refreshToken, user, login, logout }}>
+    <AuthContext.Provider value={{ user, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

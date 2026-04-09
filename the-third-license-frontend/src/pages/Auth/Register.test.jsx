@@ -91,11 +91,11 @@ describe('Register', () => {
     vi.useRealTimers();
   });
 
-  // ── Scenario: Username already taken ──────────────────────────────────────
+  // ── Scenario: Credentials already taken (generic message to prevent enumeration) ──
 
-  it('shows error when username is already taken', async () => {
+  it('shows generic error when credentials are already taken', async () => {
     axiosMock.post.mockRejectedValueOnce({
-      response: { data: 'Username is already taken' },
+      response: { data: 'Registration failed. Please try different credentials.' },
     });
 
     render(<Register />);
@@ -105,7 +105,7 @@ describe('Register', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Register' }));
 
     await waitFor(() => {
-      expect(screen.getByText('Username is already taken')).toBeInTheDocument();
+      expect(screen.getByText('Registration failed. Please try different credentials.')).toBeInTheDocument();
     });
     expect(mockNavigate).not.toHaveBeenCalled();
   });

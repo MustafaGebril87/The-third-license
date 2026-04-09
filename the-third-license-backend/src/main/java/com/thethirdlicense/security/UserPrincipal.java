@@ -2,10 +2,11 @@ package com.thethirdlicense.security;
 
 import com.thethirdlicense.models.User;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 public class UserPrincipal implements UserDetails {
     private final UUID id;
@@ -19,7 +20,9 @@ public class UserPrincipal implements UserDetails {
         this.username = user.getUsername();
         this.email = user.getEmail();
         this.password = user.getPassword();
-        this.authorities = Collections.emptyList(); // Modify this if you have roles
+        this.authorities = user.getRoles().stream()
+                .map(role -> new SimpleGrantedAuthority("ROLE_" + role.name()))
+                .collect(Collectors.toList());
     }
 
     public UserPrincipal(UUID id, String username, String password, String email,

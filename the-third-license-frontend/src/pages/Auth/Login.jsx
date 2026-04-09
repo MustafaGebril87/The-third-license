@@ -17,13 +17,9 @@ const Login = () => {
     try {
       const response = await axios.post('/auth/login', { username, password });
 
-      const { accessToken, refreshToken } = response.data;
-
-      if (!accessToken) {
-        throw new Error("Missing accessToken in response");
-      }
-
-      login(accessToken, refreshToken);
+      // Tokens are set as HttpOnly cookies by the server.
+      // The response body contains user info { id, username, email, roles }.
+      login(response.data);
       console.log("Login successful. Navigating...");
       navigate('/dashboard');
     } catch (err) {

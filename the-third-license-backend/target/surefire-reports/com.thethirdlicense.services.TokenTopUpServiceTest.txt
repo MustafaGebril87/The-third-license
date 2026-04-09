@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.thethirdlicense.services.TokenTopUpServiceTest
 -------------------------------------------------------------------------------
-Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.127 s -- in com.thethirdlicense.services.TokenTopUpServiceTest
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.157 s -- in com.thethirdlicense.services.TokenTopUpServiceTest

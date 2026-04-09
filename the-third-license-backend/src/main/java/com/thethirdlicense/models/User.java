@@ -6,9 +6,12 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import org.hibernate.annotations.GenericGenerator;
 
@@ -95,7 +98,9 @@ public class User implements UserDetails {  //  Implement UserDetails
     //  Implemented UserDetails Methods
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return Collections.emptyList(); // No roles/authorities for now
+        return roles.stream()
+                .map(role -> new SimpleGrantedAuthority("ROLE_" + role.name()))
+                .collect(Collectors.toList());
     }
 
     @Override

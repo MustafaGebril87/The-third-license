@@ -1,20 +1,28 @@
 package com.thethirdlicense.responses;
 
-public class AuthResponse {
-    private String accessToken;
-    private String refreshToken;
+import com.thethirdlicense.models.User;
 
-    // Constructor to initialize both tokens
-    public AuthResponse(String accessToken, String refreshToken) {
-        this.accessToken = accessToken;
-        this.refreshToken = refreshToken;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+public class AuthResponse {
+    private UUID id;
+    private String username;
+    private String email;
+    private Set<String> roles;
+
+    public AuthResponse(User user) {
+        this.id = user.getId();
+        this.username = user.getUsername();
+        this.email = user.getEmail();
+        this.roles = user.getRoles().stream()
+                .map(Enum::name)
+                .collect(Collectors.toSet());
     }
 
-    // Getters
-    public String getAccessToken() { return accessToken; }
-    public String getRefreshToken() { return refreshToken; }
-
-    // Setters (if needed)
-    public void setAccessToken(String accessToken) { this.accessToken = accessToken; }
-    public void setRefreshToken(String refreshToken) { this.refreshToken = refreshToken; }
+    public UUID getId() { return id; }
+    public String getUsername() { return username; }
+    public String getEmail() { return email; }
+    public Set<String> getRoles() { return roles; }
 }

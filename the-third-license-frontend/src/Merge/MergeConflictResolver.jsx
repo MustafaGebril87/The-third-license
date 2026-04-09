@@ -3,7 +3,6 @@ import axios from '../api/axios';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
-import { jwtDecode } from 'jwt-decode';
 
 const MergeConflictResolver = () => {
   const { user } = useAuth();
@@ -25,18 +24,16 @@ const MergeConflictResolver = () => {
   const verifyOwnerAndLoad = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
+
+      if (!user) {
         setError("❌ User not authenticated.");
         return;
       }
 
-      const decoded = jwtDecode(token);
-      const currentUserId = decoded.sub;
+      const currentUserId = user.id;
 
-      const repoRes = await axios.get(`/repositories/${repositoryId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // Cookies are sent automatically via withCredentials on the axios instance
+      const repoRes = await axios.get(`/repositories/${repositoryId}`);
       const repo = repoRes.data;
 
       if (!repo) {
@@ -55,7 +52,6 @@ const MergeConflictResolver = () => {
 
       const fileListRes = await axios.get('/contributions/merge/files', {
         params: { repositoryId, branch },
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       const fileList = fileListRes.data;
@@ -73,7 +69,6 @@ const MergeConflictResolver = () => {
         paramsSerializer: params =>
           `repositoryId=${params.repositoryId}&branch=${params.branch}&` +
           params.filePath.map(f => `filePath=${encodeURIComponent(f)}`).join('&'),
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       const conflictFiles = diffRes.data.conflicts;
@@ -103,7 +98,6 @@ const MergeConflictResolver = () => {
 
   const handleSubmit = async () => {
     try {
-      const token = localStorage.getItem('token');
       const files = Object.entries(mergedContents).map(([filePath, mergedContent]) => ({
         filePath,
         mergedContent,
@@ -116,8 +110,6 @@ const MergeConflictResolver = () => {
         branch,
         files,
         mergeType,
-      }, {
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       alert('✅ Merge submitted successfully');

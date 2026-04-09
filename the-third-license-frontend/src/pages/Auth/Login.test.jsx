@@ -21,6 +21,15 @@ vi.mock('../../api/axios', () => ({
 
 import axiosMock from '../../api/axios';
 
+// Tokens are set as HttpOnly cookies by the server.
+// The response body now contains user info, not tokens.
+const USER_RESPONSE = {
+  id: 'uuid-alice',
+  username: 'alice',
+  email: 'alice@test.com',
+  roles: ['CONTRIBUTOR'],
+};
+
 describe('Login', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -40,12 +49,10 @@ describe('Login', () => {
     expect(screen.getByRole('button', { name: 'Login' })).toBeInTheDocument();
   });
 
-  // ── Scenario: User logs in successfully ───────────────────────────────────
+  // ── Scenario: Successful login — server sets cookies, client receives user info ──
 
-  it('calls login and navigates to /dashboard on success', async () => {
-    axiosMock.post.mockResolvedValueOnce({
-      data: { accessToken: 'jwt-token', refreshToken: 'refresh-token' },
-    });
+  it('calls login with user data and navigates to /dashboard on success', async () => {
+    axiosMock.post.mockResolvedValueOnce({ data: USER_RESPONSE });
 
     render(<Login />);
     fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'alice' } });
@@ -57,30 +64,15 @@ describe('Login', () => {
         username: 'alice',
         password: 'pass123',
       });
-      expect(mockLogin).toHaveBeenCalledWith('jwt-token', 'refresh-token');
+      // login() receives the full user object — not tokens
+      expect(mockLogin).toHaveBeenCalledWith(USER_RESPONSE);
       expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
     });
   });
 
-  // ── Scenario: Server returns response without accessToken ─────────────────
-
-  it('shows error when accessToken is missing from response', async () => {
-    axiosMock.post.mockResolvedValueOnce({ data: { refreshToken: 'refresh-only' } });
-
-    render(<Login />);
-    fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'alice' } });
-    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'pass123' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Login' }));
-
-    await waitFor(() => {
-      expect(screen.getByText('Invalid username or password')).toBeInTheDocument();
-    });
-    expect(mockNavigate).not.toHaveBeenCalled();
-  });
-
   // ── Scenario: User enters wrong credentials ───────────────────────────────
 
-  it('shows error message when login request fails', async () => {
+  it('shows error message when login request fails with 401', async () => {
     axiosMock.post.mockRejectedValueOnce({ message: 'Unauthorized' });
 
     render(<Login />);
@@ -93,6 +85,21 @@ describe('Login', () => {
     });
     expect(mockLogin).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  // ── Scenario: Network error ───────────────────────────────────────────────
+
+  it('shows error message on network failure', async () => {
+    axiosMock.post.mockRejectedValueOnce(new Error('Network Error'));
+
+    render(<Login />);
+    fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'alice' } });
+    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'pass123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Login' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Invalid username or password')).toBeInTheDocument();
+    });
   });
 
   // ── Scenario: No error message on initial render ──────────────────────────
@@ -114,20 +121,5 @@ describe('Login', () => {
 
     expect(usernameInput.value).toBe('testuser');
     expect(passwordInput.value).toBe('secret');
-  });
-
-  // ── Scenario: Network error ───────────────────────────────────────────────
-
-  it('shows error message on network failure', async () => {
-    axiosMock.post.mockRejectedValueOnce(new Error('Network Error'));
-
-    render(<Login />);
-    fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'alice' } });
-    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'pass123' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Login' }));
-
-    await waitFor(() => {
-      expect(screen.getByText('Invalid username or password')).toBeInTheDocument();
-    });
   });
 });

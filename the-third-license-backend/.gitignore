@@ -1,0 +1,8 @@
+target/
+*.class
+*.jar
+*.war
+
+# Local dev secrets — never commit these
+application-local.properties
+.env

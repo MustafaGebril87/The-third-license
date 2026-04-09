@@ -2,57 +2,69 @@ package com.thethirdlicense.security;
 
 import io.jsonwebtoken.*;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.thethirdlicense.models.User;
-import com.thethirdlicense.repositories.UserRepository;
 
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Component
 public class JWTUtil {
 
-    private final String SECRET_KEY = "OLjRSTbPVxhtiY9XQw542835XaYmpvv5jWmlmwoNcxM=";
-    private final UserRepository userRepository;
+    @Value("${security.jwt.secret}")
+    private String secretKey;
 
-    @Autowired
-    public JWTUtil(UserRepository userRepository) {  // Inject UserRepository
-        this.userRepository = userRepository;
-    }
+    @Value("${security.jwt.expiration-ms}")
+    private long expirationMs;
+
+    @Value("${security.jwt.refresh-expiration-ms}")
+    private long refreshExpirationMs;
+
     public String generateToken(User user) {
         Claims claims = Jwts.claims();
-        claims.setSubject(user.getId().toString()); // still store UUID in `sub`
-        claims.put("username", user.getUsername()); //  Add username
-        claims.put("email", user.getEmail());       // optional: add more user info if needed
+        claims.setSubject(user.getId().toString());
+        claims.put("username", user.getUsername());
+        claims.put("email", user.getEmail());
+        List<String> roles = user.getRoles().stream()
+                .map(Enum::name)
+                .collect(Collectors.toList());
+        claims.put("roles", roles);
 
         return Jwts.builder()
                 .setClaims(claims)
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 24 * 7)) // 7 days
-                .signWith(SignatureAlgorithm.HS256, SECRET_KEY.getBytes())
+                .setExpiration(new Date(System.currentTimeMillis() + expirationMs))
+                .signWith(SignatureAlgorithm.HS256, secretKey.getBytes())
                 .compact();
     }
 
+    public String generateRefreshToken(User user) {
+        return Jwts.builder()
+                .setSubject(user.getId().toString())
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + refreshExpirationMs))
+                .signWith(SignatureAlgorithm.HS256, secretKey.getBytes())
+                .compact();
+    }
 
     public UUID getUserIdFromToken(String token) {
-        Claims claims = Jwts.parser()
-                .setSigningKey(SECRET_KEY.getBytes())
-                .parseClaimsJws(token)
-                .getBody();
-
-        return UUID.fromString(claims.getSubject()); // Directly return UUID from token
+        Claims claims = getClaims(token);
+        return UUID.fromString(claims.getSubject());
     }
-    public String generateRefreshToken(User user) { // Accept User
-        return Jwts.builder()
-                .setSubject(user.getId().toString()) //  Store UUID, not username
-                .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 24 * 7)) // 7 days
-                .signWith(SignatureAlgorithm.HS256, SECRET_KEY.getBytes()) 
-                .compact();
+
+    @SuppressWarnings("unchecked")
+    public List<String> getRolesFromToken(String token) {
+        Claims claims = getClaims(token);
+        Object roles = claims.get("roles");
+        if (roles instanceof List) {
+            return (List<String>) roles;
+        }
+        return List.of();
     }
 
     public String extractUsername(String token) {
@@ -60,19 +72,22 @@ public class JWTUtil {
     }
 
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
-        final Claims claims = Jwts.parser()
-                .setSigningKey(SECRET_KEY)
-                .parseClaimsJws(token)
-                .getBody();
-        return claimsResolver.apply(claims);
+        return claimsResolver.apply(getClaims(token));
     }
 
     public boolean validateToken(String token) {
         try {
-            Jwts.parser().setSigningKey(SECRET_KEY.getBytes()).parseClaimsJws(token); // Use getBytes()
+            Jwts.parser().setSigningKey(secretKey.getBytes()).parseClaimsJws(token);
             return true;
         } catch (JwtException e) {
             return false;
         }
+    }
+
+    private Claims getClaims(String token) {
+        return Jwts.parser()
+                .setSigningKey(secretKey.getBytes())
+                .parseClaimsJws(token)
+                .getBody();
     }
 }
