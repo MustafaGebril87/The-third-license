@@ -160,6 +160,28 @@ public class CompanyController {
         return ResponseEntity.ok(contributions);
     }
     
+    @GetMapping("/search")
+    public ResponseEntity<?> searchCompanies(@RequestParam("q") String query) {
+        try {
+            List<Company> companies = companyRepository.findByNameContainingIgnoreCase(query.trim());
+
+            List<Map<String, Object>> result = companies.stream().map(company -> {
+                Map<String, Object> data = new HashMap<>();
+                data.put("id", company.getId());
+                data.put("name", company.getName());
+                data.put("owner", company.getOwner().getUsername());
+                repositoryRepository.findByCompany(company).ifPresent(repo ->
+                    data.put("repositoryId", repo.getId())
+                );
+                return data;
+            }).toList();
+
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Error: " + e.getMessage());
+        }
+    }
+
     @GetMapping("/all")
     public ResponseEntity<?> getAllCompanies() {
         try {

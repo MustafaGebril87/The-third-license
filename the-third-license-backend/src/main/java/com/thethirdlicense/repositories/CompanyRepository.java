@@ -19,4 +19,5 @@ public interface CompanyRepository extends JpaRepository<Company, UUID> {
 	  @Query("SELECT DISTINCT c FROM Company c JOIN c.repositories r JOIN RepositoryAccess ra ON ra.repository = r WHERE ra.user = :user")
 	  List<Company> findByRepositoryAccessUser(@Param("user") User user);
 
+	  List<Company> findByNameContainingIgnoreCase(String name);
 }

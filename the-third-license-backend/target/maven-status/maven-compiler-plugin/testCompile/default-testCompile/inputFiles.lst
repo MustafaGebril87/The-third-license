@@ -3,10 +3,12 @@ D:\OfficeOfMustafa\Kooshk\the-third-license-backend\src\test\java\com\thethirdli
 D:\OfficeOfMustafa\Kooshk\the-third-license-backend\src\test\java\com\thethirdlicense\controllers\ContributionControllerTest.java
 D:\OfficeOfMustafa\Kooshk\the-third-license-backend\src\test\java\com\thethirdlicense\controllers\ShareControllerTest.java
 D:\OfficeOfMustafa\Kooshk\the-third-license-backend\src\test\java\com\thethirdlicense\controllers\StripeTopUpControllerTest.java
+D:\OfficeOfMustafa\Kooshk\the-third-license-backend\src\test\java\com\thethirdlicense\integration\CompanySearchIntegrationTest.java
 D:\OfficeOfMustafa\Kooshk\the-third-license-backend\src\test\java\com\thethirdlicense\integration\StripeTopUpIntegrationTest.java
 D:\OfficeOfMustafa\Kooshk\the-third-license-backend\src\test\java\com\thethirdlicense\scenarios\AdminRoleScenarioTest.java
 D:\OfficeOfMustafa\Kooshk\the-third-license-backend\src\test\java\com\thethirdlicense\scenarios\AuthScenarioTest.java
 D:\OfficeOfMustafa\Kooshk\the-third-license-backend\src\test\java\com\thethirdlicense\scenarios\CompanyAccessScenarioTest.java
+D:\OfficeOfMustafa\Kooshk\the-third-license-backend\src\test\java\com\thethirdlicense\scenarios\CompanySearchScenarioTest.java
 D:\OfficeOfMustafa\Kooshk\the-third-license-backend\src\test\java\com\thethirdlicense\scenarios\ShareMarketplaceScenarioTest.java
 D:\OfficeOfMustafa\Kooshk\the-third-license-backend\src\test\java\com\thethirdlicense\services\StripeServiceTest.java
 D:\OfficeOfMustafa\Kooshk\the-third-license-backend\src\test\java\com\thethirdlicense\services\TokenTopUpServiceTest.java

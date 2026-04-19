@@ -193,4 +193,92 @@ class CompanyControllerTest {
         assertThat(body).hasSize(2);
         assertThat(body.get(0).get("name")).isIn("Alpha", "Beta");
     }
+
+    // ── Scenario: Search companies by name ───────────────────────────────────
+
+    @Test
+    void searchCompanies_partialMatch_returnsMatchingCompanies() {
+        User bob = new User("bob", "bob@test.com", "hashed", new HashSet<>());
+        bob.setId(UUID.randomUUID());
+
+        Company alphaCorp = new Company("AlphaCorp", owner);
+        Company alphaStudios = new Company("Alpha Studios", bob);
+
+        Repository_ repo = new Repository_();
+        repo.setId(UUID.randomUUID());
+
+        when(companyRepository.findByNameContainingIgnoreCase("alpha")).thenReturn(List.of(alphaCorp, alphaStudios));
+        when(repositoryRepository.findByCompany(alphaCorp)).thenReturn(Optional.of(repo));
+        when(repositoryRepository.findByCompany(alphaStudios)).thenReturn(Optional.empty());
+
+        ResponseEntity<?> response = controller.searchCompanies("alpha");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<Map<String, Object>> body = (List<Map<String, Object>>) response.getBody();
+        assertThat(body).hasSize(2);
+        assertThat(body.stream().map(m -> m.get("name"))).containsExactlyInAnyOrder("AlphaCorp", "Alpha Studios");
+    }
+
+    @Test
+    void searchCompanies_noMatch_returnsEmptyList() {
+        when(companyRepository.findByNameContainingIgnoreCase("zzz")).thenReturn(Collections.emptyList());
+
+        ResponseEntity<?> response = controller.searchCompanies("zzz");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat((List<?>) response.getBody()).isEmpty();
+    }
+
+    @Test
+    void searchCompanies_queryWithWhitespace_isTrimmedBeforeSearch() {
+        Company company = new Company("Acme", owner);
+        when(companyRepository.findByNameContainingIgnoreCase("acme")).thenReturn(List.of(company));
+        when(repositoryRepository.findByCompany(company)).thenReturn(Optional.empty());
+
+        controller.searchCompanies("  acme  ");
+
+        verify(companyRepository).findByNameContainingIgnoreCase("acme");
+    }
+
+    @Test
+    void searchCompanies_companyWithRepo_includesRepositoryIdInResponse() {
+        Company company = new Company("TestCo", owner);
+        UUID repoId = UUID.randomUUID();
+        Repository_ repo = new Repository_();
+        repo.setId(repoId);
+
+        when(companyRepository.findByNameContainingIgnoreCase("testco")).thenReturn(List.of(company));
+        when(repositoryRepository.findByCompany(company)).thenReturn(Optional.of(repo));
+
+        ResponseEntity<?> response = controller.searchCompanies("testco");
+
+        List<Map<String, Object>> body = (List<Map<String, Object>>) response.getBody();
+        assertThat(body).hasSize(1);
+        assertThat(body.get(0).get("repositoryId")).isEqualTo(repoId);
+    }
+
+    @Test
+    void searchCompanies_companyWithoutRepo_omitsRepositoryId() {
+        Company company = new Company("NoRepoCo", owner);
+        when(companyRepository.findByNameContainingIgnoreCase("norepo")).thenReturn(List.of(company));
+        when(repositoryRepository.findByCompany(company)).thenReturn(Optional.empty());
+
+        ResponseEntity<?> response = controller.searchCompanies("norepo");
+
+        List<Map<String, Object>> body = (List<Map<String, Object>>) response.getBody();
+        assertThat(body).hasSize(1);
+        assertThat(body.get(0)).doesNotContainKey("repositoryId");
+    }
+
+    @Test
+    void searchCompanies_responseIncludesOwnerUsername() {
+        Company company = new Company("OwnerCheckCo", owner);
+        when(companyRepository.findByNameContainingIgnoreCase("ownercheck")).thenReturn(List.of(company));
+        when(repositoryRepository.findByCompany(company)).thenReturn(Optional.empty());
+
+        ResponseEntity<?> response = controller.searchCompanies("ownercheck");
+
+        List<Map<String, Object>> body = (List<Map<String, Object>>) response.getBody();
+        assertThat(body.get(0).get("owner")).isEqualTo("alice");
+    }
 }

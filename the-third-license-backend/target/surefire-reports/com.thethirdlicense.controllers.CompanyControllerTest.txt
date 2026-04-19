@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.thethirdlicense.controllers.CompanyControllerTest
 -------------------------------------------------------------------------------
-Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.413 s -- in com.thethirdlicense.controllers.CompanyControllerTest
+Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 5.464 s -- in com.thethirdlicense.controllers.CompanyControllerTest
