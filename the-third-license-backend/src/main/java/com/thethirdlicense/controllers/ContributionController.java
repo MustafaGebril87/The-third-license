@@ -8,12 +8,10 @@ import com.thethirdlicense.repositories.RepositoryRepository;
 import com.thethirdlicense.security.UserPrincipal;
 import com.thethirdlicense.services.ContributionService;
 import com.thethirdlicense.services.ShareService;
-import com.thethirdlicense.services.TokenService;
 import com.thethirdlicense.services.UserService;
 import com.thethirdlicense.exceptions.UnauthorizedException;
 import com.thethirdlicense.exceptions.ResourceNotFoundException;
 
-import com.thethirdlicense.Util.ApplicationProperties;
 import com.thethirdlicense.Util.Utils;
 import com.thethirdlicense.controllers.AccessRequestDto;
 import com.thethirdlicense.controllers.ContributionDto;
@@ -106,16 +104,12 @@ public class ContributionController {
     @Autowired
     private final CompanyRepository companyRepository;
     @Autowired
-    private TokenService currencyService;
-    
-    private final ApplicationProperties applicationProperties;
-    @Autowired
     private MergeRequestRepository mergeRequestRepository;
 
     @Autowired
     private RepositoryAccessRepository repositoryAccessRepository;
     @Autowired
-    public ContributionController(RepositoryAccessRepository repositoryAccessRepository, MergeRequestRepository mergeRequestRepository,ApplicationProperties applicationProperties,CompanyRepository companyRepository,RepositoryRepository repositoryRepository, AccessRequestRepository accessRequestRepository,ContributionRepository contributionRepository, ShareService shareService,ContributionService contributionService ) {
+    public ContributionController(RepositoryAccessRepository repositoryAccessRepository, MergeRequestRepository mergeRequestRepository, CompanyRepository companyRepository, RepositoryRepository repositoryRepository, AccessRequestRepository accessRequestRepository, ContributionRepository contributionRepository, ShareService shareService, ContributionService contributionService) {
         this.contributionService = contributionService;
         this.contributionRepository = contributionRepository;
         this.shareService = shareService;
@@ -123,7 +117,6 @@ public class ContributionController {
 		this.repositoryRepository = repositoryRepository;
         this.accessRequestRepository = accessRequestRepository;
         this.companyRepository = companyRepository;
-        this.applicationProperties= applicationProperties; 
         this.mergeRequestRepository = mergeRequestRepository;
         this.repositoryAccessRepository = repositoryAccessRepository;
     }

@@ -28,7 +28,7 @@ public class StripeService {
                     .setCurrency("usd")
                     .setUnitAmount(totalCents)
                     .setProductData(SessionCreateParams.LineItem.PriceData.ProductData.builder()
-                        .setName("Coin Top-Up")
+                        .setName("Share Purchase")
                         .build())
                     .build())
                 .build())

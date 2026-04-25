@@ -1,14 +1,15 @@
 package com.thethirdlicense.models;
 
+import jakarta.persistence.*;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
-import jakarta.persistence.*;
 
 @Entity
-@Table(name = "stripe_topups")
-public class StripeTopUp {
+@Table(name = "stripe_share_purchases")
+public class StripeSharePurchase {
 
-    public enum Status { CREATED, COMPLETED, CANCELLED }
+    public enum Status { PENDING, COMPLETED, CANCELLED }
 
     @Id
     @GeneratedValue
@@ -18,20 +19,20 @@ public class StripeTopUp {
     private String stripeSessionId;
 
     @Column(nullable = false)
-    private UUID userId;
+    private UUID shareId;
 
     @Column(nullable = false)
-    private double coinAmount;
+    private UUID buyerId;
 
     @Column(nullable = false)
-    private double fee;
+    private UUID sellerId;
 
     @Column(nullable = false)
-    private double totalUsd;
+    private BigDecimal priceUsd;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private Status status = Status.CREATED;
+    private Status status = Status.PENDING;
 
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
@@ -41,17 +42,17 @@ public class StripeTopUp {
     public String getStripeSessionId() { return stripeSessionId; }
     public void setStripeSessionId(String stripeSessionId) { this.stripeSessionId = stripeSessionId; }
 
-    public UUID getUserId() { return userId; }
-    public void setUserId(UUID userId) { this.userId = userId; }
+    public UUID getShareId() { return shareId; }
+    public void setShareId(UUID shareId) { this.shareId = shareId; }
 
-    public double getCoinAmount() { return coinAmount; }
-    public void setCoinAmount(double coinAmount) { this.coinAmount = coinAmount; }
+    public UUID getBuyerId() { return buyerId; }
+    public void setBuyerId(UUID buyerId) { this.buyerId = buyerId; }
 
-    public double getFee() { return fee; }
-    public void setFee(double fee) { this.fee = fee; }
+    public UUID getSellerId() { return sellerId; }
+    public void setSellerId(UUID sellerId) { this.sellerId = sellerId; }
 
-    public double getTotalUsd() { return totalUsd; }
-    public void setTotalUsd(double totalUsd) { this.totalUsd = totalUsd; }
+    public BigDecimal getPriceUsd() { return priceUsd; }
+    public void setPriceUsd(BigDecimal priceUsd) { this.priceUsd = priceUsd; }
 
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }

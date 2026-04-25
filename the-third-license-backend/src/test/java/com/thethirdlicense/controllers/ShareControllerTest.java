@@ -1,12 +1,11 @@
 package com.thethirdlicense.controllers;
 
+import com.stripe.exception.StripeException;
 import com.thethirdlicense.exceptions.UnauthorizedException;
 import com.thethirdlicense.models.*;
-import com.thethirdlicense.repositories.RepositoryAccessRepository;
-import com.thethirdlicense.repositories.ShareRepository;
 import com.thethirdlicense.security.UserPrincipal;
 import com.thethirdlicense.services.ShareService;
-import com.thethirdlicense.services.TokenService;
+import com.thethirdlicense.services.ShareStripeService;
 import com.thethirdlicense.services.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,9 +30,7 @@ class ShareControllerTest {
 
     @Mock private ShareService shareService;
     @Mock private UserService userService;
-    @Mock private TokenService currencyService;
-    @Mock private ShareRepository shareRepository;
-    @Mock private RepositoryAccessRepository repositoryAccessRepository;
+    @Mock private ShareStripeService shareStripeService;
 
     @InjectMocks
     private ShareController controller;
@@ -174,53 +171,47 @@ class ShareControllerTest {
         assertThat(response.getBody().getPercentage()).isEqualTo(10.0);
     }
 
-    // ── Scenario: Buyer purchases a share from marketplace ────────────────────
+    // ── Scenario: Buyer initiates Stripe checkout to buy a share ─────────────
 
     @Test
-    void buyShare_validBuyer_purchasesShareAndGrantsRepoAccess() {
+    void initiateSharePurchase_validBuyer_returnsCheckoutUrl() throws StripeException {
         UUID shareId = share.getId();
-
-        // Add a repository to the company so the access-grant loop actually executes
-        Repository_ repo = new Repository_();
-        repo.setId(UUID.randomUUID());
-        company.setRepositories(List.of(repo));
+        StripeCheckoutResponse fakeCheckout = new StripeCheckoutResponse("sess_123", "https://checkout.stripe.com/sess_123");
 
         Authentication auth = mock(Authentication.class);
         when(auth.getPrincipal()).thenReturn(buyerPrincipal);
+        when(shareStripeService.initiatePurchase(
+                buyer.getId(), shareId,
+                "http://localhost:5173/stripe/success",
+                "http://localhost:5173/stripe/cancel"))
+            .thenReturn(fakeCheckout);
 
-        when(shareRepository.findById(shareId)).thenReturn(Optional.of(share));
-        when(userService.findById(buyer.getId())).thenReturn(buyer);
-        when(repositoryAccessRepository.findByUserAndRepository(buyer, repo)).thenReturn(Optional.empty());
-
-        ResponseEntity<String> response = controller.buyShare(shareId, 50.0, auth);
+        ResponseEntity<StripeCheckoutResponse> response = controller.initiateSharePurchase(
+                shareId,
+                "http://localhost:5173/stripe/success",
+                "http://localhost:5173/stripe/cancel",
+                auth);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).contains("Share purchased successfully");
-        verify(currencyService).purchaseShare(buyer.getId(), shareId, 50.0);
+        assertThat(response.getBody().getSessionId()).isEqualTo("sess_123");
+        assertThat(response.getBody().getCheckoutUrl()).contains("stripe.com");
+        verify(shareStripeService).initiatePurchase(buyer.getId(), shareId,
+                "http://localhost:5173/stripe/success", "http://localhost:5173/stripe/cancel");
     }
 
-    // ── Scenario: Buyer already has repo access — no duplicate grant ──────────
+    // ── Scenario: Buyer confirms Stripe payment → share ownership transferred ──
 
     @Test
-    void buyShare_buyerAlreadyHasAccess_doesNotDuplicateAccessRecord() {
-        UUID shareId = share.getId();
-
-        Repository_ repo = new Repository_();
-        repo.setId(UUID.randomUUID());
-        company.setRepositories(List.of(repo));
-
+    void confirmSharePurchase_validSession_returns200() throws StripeException {
         Authentication auth = mock(Authentication.class);
         when(auth.getPrincipal()).thenReturn(buyerPrincipal);
+        doNothing().when(shareStripeService).confirmPurchase(buyer.getId(), "sess_123");
 
-        when(shareRepository.findById(shareId)).thenReturn(Optional.of(share));
-        when(userService.findById(buyer.getId())).thenReturn(buyer);
-        when(repositoryAccessRepository.findByUserAndRepository(buyer, repo))
-            .thenReturn(Optional.of(new RepositoryAccess()));
+        ResponseEntity<String> response = controller.confirmSharePurchase("sess_123", auth);
 
-        controller.buyShare(shareId, 50.0, auth);
-
-        // Access record should NOT be saved again
-        verify(repositoryAccessRepository, never()).save(any());
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).contains("purchased");
+        verify(shareStripeService).confirmPurchase(buyer.getId(), "sess_123");
     }
 
     // ── Scenario: View shares by company ─────────────────────────────────────

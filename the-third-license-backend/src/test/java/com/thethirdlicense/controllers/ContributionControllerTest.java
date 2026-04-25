@@ -6,9 +6,7 @@ import com.thethirdlicense.repositories.*;
 import com.thethirdlicense.security.UserPrincipal;
 import com.thethirdlicense.services.ContributionService;
 import com.thethirdlicense.services.ShareService;
-import com.thethirdlicense.services.TokenService;
 import com.thethirdlicense.services.UserService;
-import com.thethirdlicense.Util.ApplicationProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -38,8 +36,6 @@ class ContributionControllerTest {
     @Mock private ShareService shareService;
     @Mock private AccessRequestRepository accessRequestRepository;
     @Mock private CompanyRepository companyRepository;
-    @Mock private TokenService currencyService;
-    @Mock private ApplicationProperties applicationProperties;
     @Mock private MergeRequestRepository mergeRequestRepository;
     @Mock private RepositoryAccessRepository repositoryAccessRepository;
     @Mock private UserService userService;

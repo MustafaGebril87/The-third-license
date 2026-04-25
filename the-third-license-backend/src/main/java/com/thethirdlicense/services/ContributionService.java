@@ -18,7 +18,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
-import com.thethirdlicense.Util.ApplicationProperties;
 import com.thethirdlicense.Util.Utils;
 import com.thethirdlicense.controllers.AccessRequestDto;
 import com.thethirdlicense.controllers.ContributionDto;
@@ -59,21 +58,16 @@ public class ContributionService {
     private final RepositoryRepository repositoryRepository;
     @Autowired
     private final CompanyRepository companyRepository;
-    @Autowired
-    private TokenService tokenService;
-    private final ApplicationProperties applicationProperties;
 	private final UserRepository userRepository;
     @Autowired
-    public ContributionService(UserRepository userRepository,ApplicationProperties applicationProperties,CompanyRepository companyRepository,RepositoryRepository repositoryRepository, AccessRequestRepository accessRequestRepository,ContributionRepository contributionRepository, ShareService shareService) {
+    public ContributionService(UserRepository userRepository, CompanyRepository companyRepository, RepositoryRepository repositoryRepository, AccessRequestRepository accessRequestRepository, ContributionRepository contributionRepository, ShareService shareService) {
         this.contributionRepository = contributionRepository;
         this.shareService = shareService;
 		this.accessRequestRepository = accessRequestRepository;
 		this.repositoryRepository = repositoryRepository;
         this.accessRequestRepository = accessRequestRepository;
         this.companyRepository = companyRepository;
-        this.applicationProperties= applicationProperties; 
         this.userRepository = userRepository;
-
     }
     @Transactional
     public void approveContribution(UUID contributionId, User owner) {
@@ -150,12 +144,6 @@ public class ContributionService {
         contributionRepository.save(contribution);
 
         shareService.recalculateShares(contribution.getRepository().getCompany());
-
-        int rewardKb = (modifiedLines * 50) / 1024; // integer KB
-        double rate = (applicationProperties.getCurrencyExchangeRate());
-        double rewardAmount = rate*(rewardKb);
-
-        tokenService.generateTokenForUser(contribution.getUser().getId(), rewardAmount);
 
     }
 

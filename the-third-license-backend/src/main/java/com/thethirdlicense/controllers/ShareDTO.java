@@ -12,15 +12,16 @@ public class ShareDTO {
     private boolean isForSale;
     private BigDecimal price;
     private UUID ownerId;
+    private String ownerUsername;
 
     public ShareDTO(Share share) {
         this.id = share.getId();
         this.companyName = share.getCompany().getName();
         this.percentage = share.getPercentage();
         this.isForSale = share.isForSale();
-        this.price = share.getPrice(); // Assuming Share has getPrice()
-        this.ownerId = share.getOwner().getId(); // Ensure this is added
-
+        this.price = share.getPrice();
+        this.ownerId = share.getOwner().getId();
+        this.ownerUsername = share.getOwner().getUsername();
     }
 
     public UUID getId() {
@@ -41,5 +42,9 @@ public class ShareDTO {
 
     public BigDecimal getPrice() {
         return price;
+    }
+
+    public String getOwnerUsername() {
+        return ownerUsername;
     }
 }
