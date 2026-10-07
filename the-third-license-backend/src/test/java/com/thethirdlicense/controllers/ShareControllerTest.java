@@ -1,12 +1,11 @@
 package com.thethirdlicense.controllers;
 
+import com.stripe.exception.StripeException;
 import com.thethirdlicense.exceptions.UnauthorizedException;
 import com.thethirdlicense.models.*;
-import com.thethirdlicense.repositories.RepositoryAccessRepository;
-import com.thethirdlicense.repositories.ShareRepository;
 import com.thethirdlicense.security.UserPrincipal;
 import com.thethirdlicense.services.ShareService;
-import com.thethirdlicense.services.TokenService;
+import com.thethirdlicense.services.ShareStripeService;
 import com.thethirdlicense.services.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,9 +30,7 @@ class ShareControllerTest {
 
     @Mock private ShareService shareService;
     @Mock private UserService userService;
-    @Mock private TokenService currencyService;
-    @Mock private ShareRepository shareRepository;
-    @Mock private RepositoryAccessRepository repositoryAccessRepository;
+    @Mock private ShareStripeService shareStripeService;
 
     @InjectMocks
     private ShareController controller;
@@ -62,6 +59,7 @@ class ShareControllerTest {
         share.setCompany(company);
         share.setOwner(seller);
         share.setPercentage(30.0);
+        share.setUnits(300_000);
         share.setForSale(true);
         share.setPrice(new BigDecimal("50.00"));
     }
@@ -129,9 +127,9 @@ class ShareControllerTest {
         markedShare.setOwner(seller);
         markedShare.setCompany(company);
 
-        when(shareService.markShareForSale(shareId, new BigDecimal("100.00"))).thenReturn(markedShare);
+        when(shareService.markShareForSale(shareId, new BigDecimal("100.00"), seller.getId())).thenReturn(markedShare);
 
-        ResponseEntity<ShareDTO> response = controller.markShareForSale(shareId, new BigDecimal("100.00"));
+        ResponseEntity<ShareDTO> response = controller.markShareForSale(shareId, new BigDecimal("100.00"), sellerPrincipal);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().getPrice()).isEqualByComparingTo(new BigDecimal("100.00"));
@@ -148,9 +146,9 @@ class ShareControllerTest {
         unmarked.setOwner(seller);
         unmarked.setCompany(company);
 
-        when(shareService.unmarkShareForSale(shareId)).thenReturn(unmarked);
+        when(shareService.unmarkShareForSale(shareId, seller.getId())).thenReturn(unmarked);
 
-        ResponseEntity<Share> response = controller.unmarkShareForSale(shareId);
+        ResponseEntity<ShareDTO> response = controller.unmarkShareForSale(shareId, sellerPrincipal);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().isForSale()).isFalse();
@@ -166,61 +164,48 @@ class ShareControllerTest {
         splitOff.setOwner(seller);
         splitOff.setCompany(company);
 
-        when(shareService.splitShare(shareId, 10.0)).thenReturn(splitOff);
+        when(shareService.splitShare(shareId, 10.0, seller.getId())).thenReturn(splitOff);
 
-        ResponseEntity<ShareDTO> response = controller.splitShare(shareId, 10.0);
+        ResponseEntity<ShareDTO> response = controller.splitShare(shareId, 10.0, sellerPrincipal);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().getPercentage()).isEqualTo(10.0);
     }
 
-    // ── Scenario: Buyer purchases a share from marketplace ────────────────────
+    // ── Scenario: Buyer initiates Stripe checkout to buy a share ─────────────
 
     @Test
-    void buyShare_validBuyer_purchasesShareAndGrantsRepoAccess() {
+    void initiateSharePurchase_validBuyer_returnsCheckoutUrl() throws StripeException {
         UUID shareId = share.getId();
+        StripeCheckoutResponse fakeCheckout = new StripeCheckoutResponse("sess_123", "https://checkout.stripe.com/sess_123");
 
-        // Add a repository to the company so the access-grant loop actually executes
-        Repository_ repo = new Repository_();
-        repo.setId(UUID.randomUUID());
-        company.setRepositories(List.of(repo));
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "frontendOrigin", "http://localhost:5173");
+        when(shareStripeService.initiatePurchase(
+                buyer.getId(), shareId,
+                "http://localhost:5173/stripe/success",
+                "http://localhost:5173/stripe/cancel"))
+            .thenReturn(fakeCheckout);
 
-        Authentication auth = mock(Authentication.class);
-        when(auth.getPrincipal()).thenReturn(buyerPrincipal);
-
-        when(shareRepository.findById(shareId)).thenReturn(Optional.of(share));
-        when(userService.findById(buyer.getId())).thenReturn(buyer);
-        when(repositoryAccessRepository.findByUserAndRepository(buyer, repo)).thenReturn(Optional.empty());
-
-        ResponseEntity<String> response = controller.buyShare(shareId, 50.0, auth);
+        ResponseEntity<StripeCheckoutResponse> response = controller.initiateSharePurchase(shareId, buyerPrincipal);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).contains("Share purchased successfully");
-        verify(currencyService).purchaseShare(buyer.getId(), shareId, 50.0);
+        assertThat(response.getBody().getSessionId()).isEqualTo("sess_123");
+        assertThat(response.getBody().getCheckoutUrl()).contains("stripe.com");
+        verify(shareStripeService).initiatePurchase(buyer.getId(), shareId,
+                "http://localhost:5173/stripe/success", "http://localhost:5173/stripe/cancel");
     }
 
-    // ── Scenario: Buyer already has repo access — no duplicate grant ──────────
+    // ── Scenario: Buyer confirms Stripe payment → share ownership transferred ──
 
     @Test
-    void buyShare_buyerAlreadyHasAccess_doesNotDuplicateAccessRecord() {
-        UUID shareId = share.getId();
+    void confirmSharePurchase_validSession_returns200() throws StripeException {
+        doNothing().when(shareStripeService).confirmPurchase(buyer.getId(), "sess_123");
 
-        Repository_ repo = new Repository_();
-        repo.setId(UUID.randomUUID());
-        company.setRepositories(List.of(repo));
+        ResponseEntity<String> response = controller.confirmSharePurchase("sess_123", buyerPrincipal);
 
-        Authentication auth = mock(Authentication.class);
-        when(auth.getPrincipal()).thenReturn(buyerPrincipal);
-
-        when(shareRepository.findById(shareId)).thenReturn(Optional.of(share));
-        when(userService.findById(buyer.getId())).thenReturn(buyer);
-        when(repositoryAccessRepository.findByUserAndRepository(buyer, repo))
-            .thenReturn(Optional.of(new RepositoryAccess()));
-
-        controller.buyShare(shareId, 50.0, auth);
-
-        // Access record should NOT be saved again
-        verify(repositoryAccessRepository, never()).save(any());
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).contains("purchased");
+        verify(shareStripeService).confirmPurchase(buyer.getId(), "sess_123");
     }
 
     // ── Scenario: View shares by company ─────────────────────────────────────
@@ -230,7 +215,7 @@ class ShareControllerTest {
         UUID companyId = company.getId();
         when(shareService.getSharesByCompany(companyId)).thenReturn(List.of(share));
 
-        ResponseEntity<List<Share>> response = controller.getSharesByCompany(companyId);
+        ResponseEntity<List<ShareDTO>> response = controller.getSharesByCompany(companyId);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).hasSize(1);

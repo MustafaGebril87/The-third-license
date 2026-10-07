@@ -1,150 +1,93 @@
 package com.thethirdlicense.controllers;
 
 import com.thethirdlicense.models.*;
-import com.thethirdlicense.models.MergeRequest;
-import org.eclipse.jgit.api.ResetCommand;
-
 import com.thethirdlicense.repositories.RepositoryRepository;
 import com.thethirdlicense.security.UserPrincipal;
 import com.thethirdlicense.services.ContributionService;
+import com.thethirdlicense.services.GitService;
+import com.thethirdlicense.services.GitWorkspace;
 import com.thethirdlicense.services.ShareService;
-import com.thethirdlicense.services.TokenService;
 import com.thethirdlicense.services.UserService;
 import com.thethirdlicense.exceptions.UnauthorizedException;
 import com.thethirdlicense.exceptions.ResourceNotFoundException;
-
-import com.thethirdlicense.Util.ApplicationProperties;
-import com.thethirdlicense.Util.Utils;
-import com.thethirdlicense.controllers.AccessRequestDto;
-import com.thethirdlicense.controllers.ContributionDto;
-import com.thethirdlicense.models.AccessRequest;
-import com.thethirdlicense.models.Company;
-import com.thethirdlicense.models.Contribution;
-import com.thethirdlicense.models.ContributionStatus;
-import com.thethirdlicense.models.Repository_;
-import com.thethirdlicense.models.User;
 import com.thethirdlicense.repositories.AccessRequestRepository;
 import com.thethirdlicense.repositories.CompanyRepository;
 import com.thethirdlicense.repositories.ContributionRepository;
 import com.thethirdlicense.repositories.MergeRequestRepository;
 import com.thethirdlicense.repositories.RepositoryAccessRepository;
 
-import org.springframework.transaction.annotation.Transactional;
 import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.MergeResult;
+import org.eclipse.jgit.api.ResetCommand;
+import org.eclipse.jgit.api.errors.RefNotFoundException;
+import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
 import org.eclipse.jgit.lib.ObjectReader;
-import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
+import org.eclipse.jgit.lib.Ref;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.lib.RepositoryState;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevTree;
 import org.eclipse.jgit.revwalk.RevWalk;
-import org.eclipse.jgit.api.MergeCommand;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
-
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.nio.file.Paths;
-import java.time.LocalDateTime;
-import java.util.*;
-import java.util.stream.Collectors;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.api.errors.RefNotFoundException;
-import org.eclipse.jgit.merge.MergeStrategy;
 import org.eclipse.jgit.transport.PushResult;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.RemoteRefUpdate;
-import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
-import org.eclipse.jgit.lib.Ref;
-import java.util.Date;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-
-import org.eclipse.jgit.diff.DiffEntry;
-import org.eclipse.jgit.diff.DiffFormatter;
-import org.eclipse.jgit.diff.Edit;
-import org.eclipse.jgit.diff.RawTextComparator;
-import org.eclipse.jgit.patch.FileHeader;
-import org.eclipse.jgit.patch.HunkHeader;
-import org.eclipse.jgit.util.io.DisabledOutputStream;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.stereotype.Service;
-
-
-
-import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.lib.RepositoryState;
-import org.eclipse.jgit.lib.StoredConfig;
-import org.eclipse.jgit.treewalk.AbstractTreeIterator;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
-import org.eclipse.jgit.treewalk.EmptyTreeIterator;
 import org.eclipse.jgit.treewalk.TreeWalk;
 import org.eclipse.jgit.treewalk.filter.PathFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
 import java.io.IOException;
-import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
+
 @RestController
 @RequestMapping("/api/contributions")
 public class ContributionController {
+
+    private static final Logger log = LoggerFactory.getLogger(ContributionController.class);
 
     private ContributionService contributionService;
     private final RepositoryRepository repositoryRepository;
     private final ContributionRepository contributionRepository;
     private final ShareService shareService;
     private AccessRequestRepository accessRequestRepository;
-    @Autowired
     private final CompanyRepository companyRepository;
-    @Autowired
-    private TokenService currencyService;
-    
-    private final ApplicationProperties applicationProperties;
-    @Autowired
     private MergeRequestRepository mergeRequestRepository;
+    private RepositoryAccessRepository repositoryAccessRepository;
+    private final GitService gitService;
+    private final GitWorkspace workspace;
 
     @Autowired
-    private RepositoryAccessRepository repositoryAccessRepository;
-    @Autowired
-    public ContributionController(RepositoryAccessRepository repositoryAccessRepository, MergeRequestRepository mergeRequestRepository,ApplicationProperties applicationProperties,CompanyRepository companyRepository,RepositoryRepository repositoryRepository, AccessRequestRepository accessRequestRepository,ContributionRepository contributionRepository, ShareService shareService,ContributionService contributionService ) {
+    public ContributionController(RepositoryAccessRepository repositoryAccessRepository, MergeRequestRepository mergeRequestRepository, CompanyRepository companyRepository, RepositoryRepository repositoryRepository, AccessRequestRepository accessRequestRepository, ContributionRepository contributionRepository, ShareService shareService, ContributionService contributionService, GitService gitService, GitWorkspace workspace, UserService userService) {
         this.contributionService = contributionService;
         this.contributionRepository = contributionRepository;
         this.shareService = shareService;
-		this.accessRequestRepository = accessRequestRepository;
-		this.repositoryRepository = repositoryRepository;
         this.accessRequestRepository = accessRequestRepository;
+        this.repositoryRepository = repositoryRepository;
         this.companyRepository = companyRepository;
-        this.applicationProperties= applicationProperties; 
         this.mergeRequestRepository = mergeRequestRepository;
         this.repositoryAccessRepository = repositoryAccessRepository;
+        this.gitService = gitService;
+        this.workspace = workspace;
+        this.userService = userService;
     }
 
-    @Autowired
     private UserService userService;
-
-//    @PostMapping("/{id}/approve")
-//    public ResponseEntity<String> approveContribution(@PathVariable("id") UUID id) {
-//        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-//        if (!(principal instanceof UserPrincipal)) {
-//            throw new UnauthorizedException("Unauthorized");
-//        }
-//
-//        UserPrincipal userPrincipal = (UserPrincipal) principal;
-//        User owner = userService.findById(userPrincipal.getId());
-//        if (owner == null) throw new ResourceNotFoundException("User not found");
-//
-//        contributionService.approveContribution(id, owner);
-//        return ResponseEntity.ok("Contribution approved.");
-//    }
 
     @PostMapping("/{id}/decline")
     public ResponseEntity<String> declineContribution(@PathVariable("id") UUID id) {
@@ -183,8 +126,7 @@ public class ContributionController {
             return ResponseEntity.ok(Map.of("message", message));
 
         } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(500).body("Error: " + e.getMessage());
+            return errorResponse(e, "Access request");
         }
     }
 
@@ -293,43 +235,103 @@ public class ContributionController {
         contributionService.declineRequest(id, owner);
         return ResponseEntity.ok("Access request declined.");
     }
+
+    // ── Git operations ────────────────────────────────────────────────────────
+    // Every endpoint below: (1) checks the caller may touch this repository,
+    // (2) validates branch names, (3) resolves every user-supplied file path with
+    // GitWorkspace.resolveInside so nothing can be read or written outside the clone.
+
+    private User currentUser() {
+        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (!(principal instanceof UserPrincipal userPrincipal)) {
+            throw new UnauthorizedException("Unauthorized");
+        }
+        return userService.findById(userPrincipal.getId());
+    }
+
+    private Repository_ findRepo(UUID repositoryId) {
+        return repositoryRepository.findById(repositoryId)
+                .orElseThrow(() -> new ResourceNotFoundException("Repository not found"));
+    }
+
+    private void requireAccess(Repository_ repo, User user) {
+        if (!gitService.hasAccess(repo, user)) {
+            throw new AccessDeniedException("You don't have access to this repository.");
+        }
+    }
+
+    private void requireOwner(Repository_ repo, User user) {
+        if (!gitService.isCompanyOwner(repo, user)) {
+            throw new AccessDeniedException("Only the company owner can do this.");
+        }
+    }
+
+    /** Converts expected failures to clean 4xx responses; logs and hides details of anything else. */
+    private ResponseEntity<String> errorResponse(Exception e, String action) {
+        if (e instanceof IllegalArgumentException || e instanceof IllegalStateException) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+        if (e instanceof AccessDeniedException || e instanceof UnauthorizedException) {
+            return ResponseEntity.status(403).body(e.getMessage());
+        }
+        if (e instanceof ResourceNotFoundException) {
+            return ResponseEntity.status(404).body(e.getMessage());
+        }
+        log.error("{} failed", action, e);
+        return ResponseEntity.status(500).body(action + " failed.");
+    }
+
+    /** Git pathspec (forward slashes, relative to the working copy) for a file already validated by resolveInside. */
+    private static String gitPath(File root, File target) {
+        return root.toPath().toAbsolutePath().normalize()
+                .relativize(target.toPath().toAbsolutePath().normalize())
+                .toString().replace('\\', '/');
+    }
+
+    private static void writeResolvedFiles(Git git, File root, List<MergeResolveRequest.FileMergeItem> files) throws Exception {
+        for (MergeResolveRequest.FileMergeItem item : files) {
+            if (item.getFilePath() == null || item.getMergedContent() == null) {
+                throw new IllegalArgumentException("filePath and mergedContent are required for all files.");
+            }
+            File target = GitWorkspace.resolveInside(root, item.getFilePath());
+            Files.createDirectories(target.getParentFile().toPath());
+            Files.writeString(target.toPath(), item.getMergedContent());
+            git.add().addFilepattern(gitPath(root, target)).call();
+        }
+    }
+
+    private void ensureCloned(Repository_ repo, File cloneDir) throws Exception {
+        if (!new File(cloneDir, ".git").exists()) {
+            Git.cloneRepository()
+                    .setURI(repo.getGitUrl())
+                    .setDirectory(cloneDir)
+                    .setCloneAllBranches(true)
+                    .call()
+                    .close();
+        }
+    }
+
     @PostMapping("/merge-branch")
     public ResponseEntity<?> mergeBranch(@RequestBody MergeResolveRequest request) {
-        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if (!(principal instanceof UserPrincipal)) {
-            return ResponseEntity.status(403).body("Unauthorized");
-        }
-
-        UserPrincipal userPrincipal = (UserPrincipal) principal;
-        User user = userService.findById(userPrincipal.getId());
-
         try {
-            Repository_ repo = repositoryRepository.findById(request.getRepositoryId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Repository not found"));
+            User user = currentUser();
+            Repository_ repo = findRepo(request.getRepositoryId());
 
             List<MergeResolveRequest.FileMergeItem> files = request.getFiles();
             if (files == null || files.isEmpty()) {
                 return ResponseEntity.badRequest().body("No files provided for merging.");
             }
 
-            String mergeType = request.getMergeType();
-
-            if ("PULL_CONFLICT".equalsIgnoreCase(mergeType)) {
-                String userClonePath = "C:\\repos\\cloned-repos\\" + repo.getName() + "-" + user.getUsername();
-                File userRepoDir = new File(userClonePath);
-
+            if ("PULL_CONFLICT".equalsIgnoreCase(request.getMergeType())) {
+                requireAccess(repo, user);
+                File userRepoDir = workspace.userClone(repo, user);
                 if (!new File(userRepoDir, ".git").exists()) {
                     return ResponseEntity.status(400).body("Repository is not cloned.");
                 }
 
                 try (Git git = Git.open(userRepoDir)) {
                     git.checkout().setName("main").call();
-
-                    for (MergeResolveRequest.FileMergeItem item : files) {
-                        File file = new File(userRepoDir, item.getFilePath());
-                        Files.writeString(file.toPath(), item.getMergedContent());
-                        git.add().addFilepattern(item.getFilePath()).call();
-                    }
+                    writeResolvedFiles(git, userRepoDir, files);
 
                     RevCommit commit = git.commit()
                             .setMessage("Resolved pull conflict locally for " + files.size() + " file(s)")
@@ -341,62 +343,42 @@ public class ContributionController {
             }
 
             // Owner resolving merge remotely
-            Company company = repo.getCompany();
-            if (!company.getOwner().getId().equals(user.getId())) {
-                return ResponseEntity.status(403).body("Only the company owner can merge branches.");
-            }
-
-            String ownerClonePath = "C:\\repos\\cloned-repos\\" + repo.getName() + "-owner";
-            File cloneDir = new File(ownerClonePath);
-
-            if (!new File(cloneDir, ".git").exists()) {
-                Git.cloneRepository()
-                        .setURI(repo.getLocalPath())
-                        .setDirectory(cloneDir)
-                        .setBare(false)
-                        .setCloneAllBranches(true)
-                        .setRemote("origin")
-                        .call()
-                        .close();
-            }
+            requireOwner(repo, user);
+            String branch = GitWorkspace.requireReadableBranch(request.getBranch());
+            File cloneDir = workspace.ownerClone(repo);
+            ensureCloned(repo, cloneDir);
 
             try (Git git = Git.open(cloneDir)) {
                 git.fetch().setRemote("origin").call();
                 git.checkout().setName("main").call();
                 git.pull().call();
 
-                for (MergeResolveRequest.FileMergeItem item : files) {
-                    if (item.getFilePath() == null || item.getMergedContent() == null) {
-                        return ResponseEntity.badRequest().body("filePath and mergedContent are required for all files.");
-                    }
+                // Commit main is at before the merge, so the contribution is measured as this change only
+                ObjectId baseCommit = git.getRepository().resolve("HEAD");
 
-                    File file = new File(cloneDir, item.getFilePath());
-                    Files.writeString(file.toPath(), item.getMergedContent());
-                    git.add().addFilepattern(item.getFilePath()).call();
-                }
+                writeResolvedFiles(git, cloneDir, files);
 
                 RevCommit commit = git.commit()
-                        .setMessage("Manually merged " + files.size() + " file(s)")
+                        .setMessage("Manually merged " + files.size() + " file(s) from " + branch)
                         .setAuthor(user.getUsername(), user.getEmail())
                         .call();
 
                 git.push().setRemote("origin").add("main").call();
 
-                //  Approve the matching pending contribution
                 Optional<Contribution> contributionOpt = contributionRepository
-                        .findByRepositoryIdAndBranchAndStatus(repo.getId(), request.getBranch(), ContributionStatus.PENDING)
+                        .findByRepositoryIdAndBranchAndStatus(repo.getId(), branch, ContributionStatus.PENDING)
                         .stream()
                         .findFirst();
 
                 contributionOpt.ifPresent(c -> {
-                    c.setNewCommitHash(commit.getName()); //  Set the new commit hash
-                    contributionRepository.save(c);       //  Persist update before approval
+                    if (baseCommit != null) c.setOriginalCommitHash(baseCommit.getName());
+                    c.setNewCommitHash(commit.getName());
+                    contributionRepository.save(c);
                     contributionService.approveContribution(c.getId(), user);
                 });
 
-                //  Resolve the matching pending merge request
                 Optional<MergeRequest> mergeRequestOpt = mergeRequestRepository
-                        .findByRepositoryIdAndBranchAndStatus(repo.getId(), request.getBranch(), MergeRequestStatus.PENDING)
+                        .findByRepositoryIdAndBranchAndStatus(repo.getId(), branch, MergeRequestStatus.PENDING)
                         .stream()
                         .findFirst();
 
@@ -409,16 +391,9 @@ public class ContributionController {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(500).body("Merge failed: " + e.getMessage());
+            return errorResponse(e, "Merge");
         }
     }
-
-
-
-
-
-
 
     private String readFileContent(Repository repository, ObjectId commitId, String filePath) throws IOException {
         try (RevWalk revWalk = new RevWalk(repository)) {
@@ -431,7 +406,7 @@ public class ContributionController {
                 treeWalk.setFilter(PathFilter.create(filePath));
 
                 if (!treeWalk.next()) {
-                    return ""; // File does not exist at this commit
+                    return null; // File does not exist at this commit
                 }
 
                 ObjectId objectId = treeWalk.getObjectId(0);
@@ -441,168 +416,81 @@ public class ContributionController {
         }
     }
 
-    
-    public String getCurrentBranch(UUID repositoryId, String username) throws IOException {
-        Repository_ repo = repositoryRepository.findById(repositoryId)
-                .orElseThrow(() -> new ResourceNotFoundException("Repository not found"));
-
-        String clonePath = "C:\\repos\\cloned-repos\\" + repo.getName() + "-" + username;
-        File repoDir = new File(clonePath);
-
-        try (Git git = Git.open(repoDir)) {
-            return git.getRepository().getBranch();  // returns the current checked-out branch
-        }
-    }
-
-	
-
     @GetMapping("/merge/diff")
     public ResponseEntity<?> getFileDiff(
             @RequestParam UUID repositoryId,
             @RequestParam String branch,
             @RequestParam List<String> filePath) {
 
-        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if (!(principal instanceof UserPrincipal)) {
-            return ResponseEntity.status(403).body("Unauthorized");
-        }
-
-        UserPrincipal userPrincipal = (UserPrincipal) principal;
-        User user = userService.findById(userPrincipal.getId());
-
         try {
-            Repository_ repo = repositoryRepository.findById(repositoryId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Repository not found"));
+            User user = currentUser();
+            Repository_ repo = findRepo(repositoryId);
+            requireAccess(repo, user);
+            GitWorkspace.requireReadableBranch(branch);
 
-            String clonePath = "C:\\repos\\cloned-repos\\" + repo.getName() + "-" + user.getUsername();
-            File cloneDir = new File(clonePath);
-
-            if (!cloneDir.exists()) {
-                System.out.println("Cloning repository to: " + clonePath);
-                Git.cloneRepository()
-                        .setURI(repo.getLocalPath())
-                        .setDirectory(cloneDir)
-                        .call()
-                        .close();
-            }
+            File cloneDir = gitService.isCompanyOwner(repo, user)
+                    ? workspace.ownerClone(repo)
+                    : workspace.userClone(repo, user);
+            ensureCloned(repo, cloneDir);
 
             try (Git git = Git.open(cloneDir)) {
-                System.out.println("Fetching from remote...");
                 git.fetch().setRemote("origin").call();
 
-                Ref remoteRef = git.getRepository().findRef("refs/remotes/origin/" + branch);
-                if (remoteRef == null) {
+                Repository jgitRepo = git.getRepository();
+                ObjectId baseCommitId = jgitRepo.resolve("refs/remotes/origin/main^{commit}");
+                ObjectId branchCommitId = jgitRepo.resolve("refs/remotes/origin/" + branch + "^{commit}");
+
+                if (branchCommitId == null) {
                     return ResponseEntity.status(404).body("Branch '" + branch + "' not found on remote.");
                 }
-
-                boolean branchExistsLocally = git.getRepository().findRef("refs/heads/" + branch) != null;
-                if (!branchExistsLocally) {
-                    git.checkout()
-                            .setCreateBranch(true)
-                            .setName(branch)
-                            .setStartPoint("origin/" + branch)
-                            .call();
-                } else {
-                    git.checkout().setName(branch).call();
-                }
-
-                ObjectId baseCommitId = git.getRepository().resolve("refs/heads/main^{commit}");
-                ObjectId branchCommitId = git.getRepository().resolve("refs/heads/" + branch + "^{commit}");
-
-                if (baseCommitId == null || branchCommitId == null) {
-                    return ResponseEntity.status(404).body("One of the branches does not have any commits.");
+                if (baseCommitId == null) {
+                    return ResponseEntity.status(404).body("Main branch has no commits.");
                 }
 
                 List<Map<String, Object>> result = new ArrayList<>();
 
                 for (String path : filePath) {
-                    try {
-                        String baseContent = "";
-                        boolean fileInBaseExists = true;
+                    // Paths here are only looked up inside git trees, but reject traversal anyway
+                    GitWorkspace.resolveInside(cloneDir, path);
 
-                        try {
-                            baseContent = readFileContent(git.getRepository(), baseCommitId, path);
-                        } catch (Exception e) {
-                            System.out.println("File not in base (main): " + path);
-                            fileInBaseExists = false;
-                        }
-
-                        String branchContent;
-                        try {
-                            branchContent = readFileContent(git.getRepository(), branchCommitId, path);
-                        } catch (Exception e) {
-                            return ResponseEntity.status(404).body("File not found in branch: " + path);
-                        }
-
-                        Map<String, Object> fileData = new HashMap<>();
-                        fileData.put("filePath", path);
-                        fileData.put("base", fileInBaseExists ? baseContent : "");
-                        fileData.put("branch", branchContent);
-                        fileData.put("type", fileInBaseExists ? "modify" : "new");
-
-                        result.add(fileData);
-
-                    } catch (Exception e) {
-                        System.err.println("Error processing file " + path + ": " + e.getMessage());
-                        return ResponseEntity.status(500).body("Failed to load diff for " + path);
+                    String baseContent = readFileContent(jgitRepo, baseCommitId, path);
+                    String branchContent = readFileContent(jgitRepo, branchCommitId, path);
+                    if (branchContent == null) {
+                        return ResponseEntity.status(404).body("File not found in branch: " + path);
                     }
+
+                    Map<String, Object> fileData = new HashMap<>();
+                    fileData.put("filePath", path);
+                    fileData.put("base", baseContent != null ? baseContent : "");
+                    fileData.put("branch", branchContent);
+                    fileData.put("type", baseContent != null ? "modify" : "new");
+                    result.add(fileData);
                 }
 
                 return ResponseEntity.ok(Map.of("conflicts", result));
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(500).body("Error while generating diff: " + e.getMessage());
+            return errorResponse(e, "Generating diff");
         }
     }
+
     @GetMapping("/merge/files")
     public ResponseEntity<?> getChangedFiles(
             @RequestParam UUID repositoryId,
             @RequestParam String branch) {
 
-        System.out.println(">>> [merge/files] Request received");
-
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        Object principal = auth.getPrincipal();
-
-        if (!(principal instanceof UserPrincipal)) {
-            return ResponseEntity.status(403).body("Unauthorized");
-        }
-
-        UserPrincipal userPrincipal = (UserPrincipal) principal;
-        User user = userService.findById(userPrincipal.getId());
-
         try {
-            Repository_ repo = repositoryRepository.findById(repositoryId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Repository not found"));
+            User user = currentUser();
+            Repository_ repo = findRepo(repositoryId);
+            requireOwner(repo, user);
+            GitWorkspace.requireReadableBranch(branch);
 
-            Company company = repo.getCompany();
-            if (!company.getOwner().getId().equals(user.getId())) {
-                return ResponseEntity.status(403).body("Only the company owner can merge.");
-            }
+            File repoDir = workspace.ownerClone(repo);
+            ensureCloned(repo, repoDir);
 
-            String repoFolder = "C:\\repos\\cloned-repos\\" + repo.getName() + "-" + user.getUsername();
-            System.out.println(">>> Repository path: " + repoFolder);
-
-            File repoDir = new File(repoFolder);
-            File gitDir = new File(repoDir, ".git");
-
-            if (!repoDir.exists() || !gitDir.exists()) {
-                System.out.println(">>> Cloning repository...");
-                Git.cloneRepository()
-                        .setURI(repo.getLocalPath())
-                        .setDirectory(repoDir)
-                        .call()
-                        .close();
-            }
-
-            try (Repository jgitRepo = new FileRepositoryBuilder()
-                    .setGitDir(gitDir)
-                    .build();
-                 Git git = new Git(jgitRepo)) {
-
-                System.out.println(">>> Fetching latest changes...");
+            try (Git git = Git.open(repoDir)) {
+                Repository jgitRepo = git.getRepository();
                 git.fetch().setRemote("origin").call();
 
                 ObjectId mainId = jgitRepo.resolve("refs/remotes/origin/main^{commit}");
@@ -628,51 +516,34 @@ public class ContributionController {
 
                 List<String> filePaths = diffs.stream()
                         .map(DiffEntry::getNewPath)
-                        .filter(path -> !path.equals("/dev/null"))
+                        .filter(path -> !path.equals(DiffEntry.DEV_NULL))
                         .collect(Collectors.toList());
 
-                System.out.println(">>> Changed files: " + filePaths);
                 return ResponseEntity.ok(filePaths);
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(500).body("Error while listing changed files: " + e.getMessage());
+            return errorResponse(e, "Listing changed files");
         }
     }
 
     @PostMapping("/merge/resolve")
     public ResponseEntity<?> applyResolvedMerge(@RequestBody MergeResolveRequest request) {
-
         try {
-            Repository_ repo = repositoryRepository.findById(request.getRepositoryId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Repository not found"));
-            Company company = repo.getCompany();
+            User user = currentUser();
+            Repository_ repo = findRepo(request.getRepositoryId());
+            requireOwner(repo, user);
 
-            Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-            if (!(principal instanceof UserPrincipal)) {
-                return ResponseEntity.status(403).body("Unauthorized");
-            }
-            UserPrincipal userPrincipal = (UserPrincipal) principal;
-            User user = userService.findById(userPrincipal.getId());
-
-            if (!company.getOwner().getId().equals(user.getId())) {
-                return ResponseEntity.status(403).body("Only the owner can resolve merges.");
+            if (request.getFiles() == null || request.getFiles().isEmpty()) {
+                return ResponseEntity.badRequest().body("No files provided for merging.");
             }
 
-            String clonePath = "C:\\repos\\cloned-repos\\" + repo.getName() + "-owner";
-            File repoDir = new File(clonePath);
+            File repoDir = workspace.ownerClone(repo);
+            ensureCloned(repo, repoDir);
 
             try (Git git = Git.open(repoDir)) {
-                // Checkout main branch
                 git.checkout().setName("main").call();
-
-                // Loop through each file and write + stage it
-                for (MergeResolveRequest.FileMergeItem item : request.getFiles()) {
-                    File file = new File(repoDir, item.getFilePath());
-                    Files.writeString(file.toPath(), item.getMergedContent());
-                    git.add().addFilepattern(item.getFilePath()).call();
-                }
+                writeResolvedFiles(git, repoDir, request.getFiles());
 
                 RevCommit commit = git.commit()
                         .setMessage("Manual merge for " + request.getFiles().size() + " file(s)")
@@ -683,10 +554,10 @@ public class ContributionController {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(500).body("Failed to apply merge: " + e.getMessage());
+            return errorResponse(e, "Applying merge");
         }
     }
+
     @GetMapping("/pull-file")
     public ResponseEntity<?> pullMultipleFiles(
             @RequestParam UUID repositoryId,
@@ -694,81 +565,73 @@ public class ContributionController {
             @RequestParam List<String> filePath,
             @RequestParam(defaultValue = "pull") String mode) {
 
-        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if (!(principal instanceof UserPrincipal userPrincipal)) {
-            return ResponseEntity.status(403).body("Unauthorized");
-        }
+        try {
+            User user = currentUser();
+            Repository_ repo = findRepo(repositoryId);
+            requireAccess(repo, user);
+            GitWorkspace.requireReadableBranch(branch);
 
-        User user = userService.findById(userPrincipal.getId());
-        Repository_ repo = repositoryRepository.findById(repositoryId)
-                .orElseThrow(() -> new ResourceNotFoundException("Repository not found"));
-
-        String clonePath = "C:\\repos\\cloned-repos\\" + repo.getName() + "-" + user.getUsername();
-        File cloneDir = new File(clonePath);
-
-        if (!new File(cloneDir, ".git").exists()) {
-            return ResponseEntity.status(403).body("You must clone the repository first before pulling files.");
-        }
-
-        try (Git git = Git.open(cloneDir)) {
-            git.fetch().setRemote("origin").call();
-
-            // Switch to main branch
-            git.checkout().setName("main").call();
-
-            // Ensure local main is up-to-date with remote
-            git.reset().setMode(ResetCommand.ResetType.HARD).setRef("origin/main").call();
-
-            ObjectId mainCommitId = git.getRepository().resolve("refs/heads/main^{commit}");
-            ObjectId branchCommitId = git.getRepository().resolve("refs/remotes/origin/" + branch + "^{commit}");
-
-            if (mainCommitId == null || branchCommitId == null) {
-                return ResponseEntity.status(404).body("Branch not found.");
+            File cloneDir = workspace.userClone(repo, user);
+            if (!new File(cloneDir, ".git").exists()) {
+                return ResponseEntity.status(403).body("You must clone the repository first before pulling files.");
             }
 
-            List<Map<String, String>> pulledFiles = new ArrayList<>();
-            List<String> conflictedFiles = new ArrayList<>();
+            try (Git git = Git.open(cloneDir)) {
+                git.fetch().setRemote("origin").call();
+                git.checkout().setName("main").call();
+                git.reset().setMode(ResetCommand.ResetType.HARD).setRef("origin/main").call();
 
-            for (String path : filePath) {
-                String mainContent = readFileContent(git.getRepository(), mainCommitId, path);
-                String branchContent = readFileContent(git.getRepository(), branchCommitId, path);
+                ObjectId mainCommitId = git.getRepository().resolve("refs/heads/main^{commit}");
+                ObjectId branchCommitId = git.getRepository().resolve("refs/remotes/origin/" + branch + "^{commit}");
 
-                if (!Objects.equals(mainContent, branchContent)) {
-                    conflictedFiles.add(path);
-                    continue;
+                if (mainCommitId == null || branchCommitId == null) {
+                    return ResponseEntity.status(404).body("Branch not found.");
                 }
 
-                File file = new File(cloneDir, path);
-                // If the file is missing locally, create it from main branch content
-                if (!file.exists()) {
-                    Files.createDirectories(file.getParentFile().toPath());
-                    Files.writeString(file.toPath(), mainContent, StandardCharsets.UTF_8);
+                List<Map<String, String>> pulledFiles = new ArrayList<>();
+                List<String> conflictedFiles = new ArrayList<>();
+
+                for (String path : filePath) {
+                    File file = GitWorkspace.resolveInside(cloneDir, path);
+
+                    String mainContent = readFileContent(git.getRepository(), mainCommitId, path);
+                    String branchContent = readFileContent(git.getRepository(), branchCommitId, path);
+
+                    if (mainContent == null && branchContent == null) {
+                        return ResponseEntity.status(404).body("File not found in repository: " + path);
+                    }
+                    if (!Objects.equals(mainContent, branchContent)) {
+                        conflictedFiles.add(path);
+                        continue;
+                    }
+
+                    // Content comes from the git tree, never from arbitrary files on disk
+                    if (!file.exists()) {
+                        Files.createDirectories(file.getParentFile().toPath());
+                        Files.writeString(file.toPath(), mainContent, StandardCharsets.UTF_8);
+                    }
+
+                    pulledFiles.add(Map.of(
+                            "filePath", path,
+                            "branch", branch,
+                            "content", mainContent
+                    ));
                 }
 
-                String content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
-                pulledFiles.add(Map.of(
-                        "filePath", path,
-                        "branch", branch,
-                        "content", content
+                if (!conflictedFiles.isEmpty()) {
+                    return ResponseEntity.status(409).body("Merge conflict detected in files:\n" + String.join(", ", conflictedFiles));
+                }
+
+                return ResponseEntity.ok(Map.of(
+                        "pulledFiles", pulledFiles,
+                        "mode", "pull"
                 ));
             }
 
-            if (!conflictedFiles.isEmpty()) {
-                return ResponseEntity.status(409).body("Merge conflict detected in files:\n" + String.join(", ", conflictedFiles));
-            }
-
-            return ResponseEntity.ok(Map.of(
-                    "pulledFiles", pulledFiles,
-                    "mode", "pull"
-            ));
-
         } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(500).body("Error pulling files: " + e.getMessage());
+            return errorResponse(e, "Pulling files");
         }
     }
-
-
 
     @PostMapping("/push-files")
     public ResponseEntity<?> pushFiles(
@@ -777,54 +640,77 @@ public class ContributionController {
             @RequestParam("files") List<MultipartFile> files,
             Authentication auth) {
 
-        if (!(auth.getPrincipal() instanceof UserPrincipal userPrincipal)) {
-            return ResponseEntity.status(401).body("Unauthorized");
-        }
-
-        User user = userService.findById(userPrincipal.getId());
-        Repository_ repo = repositoryRepository.findById(repositoryId)
-                .orElseThrow(() -> new ResourceNotFoundException("Repository not found"));
-
-        String repoPath = "C:\\repos\\cloned-repos\\" + repo.getName() + "-" + user.getUsername();
-        File repoDir = new File(repoPath);
-
-        try (Git git = Git.open(repoDir)) {
-            Repository jgitRepo = git.getRepository();
-
-            // If repo is in MERGING state, deny push
-            if (jgitRepo.getRepositoryState() == RepositoryState.MERGING) {
-                return ResponseEntity.status(409).body("Repository is in merge conflict. Resolve it before pushing.");
+        try {
+            if (auth == null || !(auth.getPrincipal() instanceof UserPrincipal userPrincipal)) {
+                return ResponseEntity.status(401).body("Unauthorized");
             }
 
-            try {
-                git.checkout().setName(branch).call();
-            } catch (RefNotFoundException e) {
-                git.checkout()
-                    .setCreateBranch(true)
-                    .setName(branch)
-                    .setStartPoint("origin/main") // Change to origin/master if needed
-                    .call();
+            User user = userService.findById(userPrincipal.getId());
+            Repository_ repo = findRepo(repositoryId);
+            requireAccess(repo, user);
+            String targetBranch = GitWorkspace.requirePushableBranch(branch);
+
+            if (files == null || files.isEmpty()) {
+                return ResponseEntity.badRequest().body("No files provided.");
             }
 
-
-            for (MultipartFile file : files) {
-                File target = new File(repoDir, file.getOriginalFilename());
-                Files.write(target.toPath(), file.getBytes());
-                git.add().addFilepattern(file.getOriginalFilename()).call();
+            File repoDir = workspace.userClone(repo, user);
+            if (!new File(repoDir, ".git").exists()) {
+                return ResponseEntity.badRequest().body("Clone the repository before pushing.");
             }
 
-            git.commit().setMessage("User push: " + user.getUsername()).call();
-            git.push().setRemote("origin").call();
+            try (Git git = Git.open(repoDir)) {
+                Repository jgitRepo = git.getRepository();
 
-            contributionService.trackContribution(user.getEmail(), repo.getName(), branch);
+                if (jgitRepo.getRepositoryState() == RepositoryState.MERGING) {
+                    return ResponseEntity.status(409).body("Repository is in merge conflict. Resolve it before pushing.");
+                }
 
-            return ResponseEntity.ok("Push successful");
+                git.fetch().setRemote("origin").call();
+                try {
+                    git.checkout().setName(targetBranch).call();
+                } catch (RefNotFoundException e) {
+                    Ref remoteBranch = jgitRepo.findRef("refs/remotes/origin/" + targetBranch);
+                    git.checkout()
+                        .setCreateBranch(true)
+                        .setName(targetBranch)
+                        .setStartPoint(remoteBranch != null ? "origin/" + targetBranch : "origin/main")
+                        .call();
+                }
+
+                for (MultipartFile file : files) {
+                    File target = GitWorkspace.resolveInside(repoDir, file.getOriginalFilename());
+                    Files.createDirectories(target.getParentFile().toPath());
+                    Files.write(target.toPath(), file.getBytes());
+                    git.add().addFilepattern(gitPath(repoDir, target)).call();
+                }
+
+                git.commit()
+                        .setMessage("User push: " + user.getUsername())
+                        .setAuthor(user.getUsername(), user.getEmail())
+                        .call();
+
+                // Push only this branch — never main
+                Iterable<PushResult> results = git.push()
+                        .setRemote("origin")
+                        .setRefSpecs(new RefSpec("refs/heads/" + targetBranch + ":refs/heads/" + targetBranch))
+                        .call();
+                for (PushResult result : results) {
+                    for (RemoteRefUpdate update : result.getRemoteUpdates()) {
+                        RemoteRefUpdate.Status status = update.getStatus();
+                        if (status != RemoteRefUpdate.Status.OK && status != RemoteRefUpdate.Status.UP_TO_DATE) {
+                            return ResponseEntity.status(409).body("Push rejected (" + status + "). Pull the latest changes and try again.");
+                        }
+                    }
+                }
+
+                contributionService.trackContribution(user, repo, targetBranch);
+
+                return ResponseEntity.ok("Push successful");
+            }
 
         } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(500).body("Error during push: " + e.getMessage());
+            return errorResponse(e, "Push");
         }
     }
-
-  
 }

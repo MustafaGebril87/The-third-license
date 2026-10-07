@@ -19,6 +19,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 
 @Configuration
 @EnableMethodSecurity
@@ -26,6 +27,9 @@ public class SecurityConfig {
 
     private final AuthFilter authFilter;
     private final UserDetailsServiceImpl userDetailsService;
+
+    @Value("${app.cors.allowed-origin}")
+    private String allowedOrigin;
 
     public SecurityConfig(AuthFilter authFilter, UserDetailsServiceImpl userDetailsService) {
         this.authFilter = authFilter;
@@ -46,6 +50,8 @@ public class SecurityConfig {
             .and()
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
+                // Authenticated by the Stripe-Signature header, not a JWT
+                .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/stripe/webhook").permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(authFilter, UsernamePasswordAuthenticationFilter.class);
@@ -66,7 +72,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:5173"));
+        config.setAllowedOrigins(List.of(allowedOrigin));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Content-Type", "Authorization"));
         config.setAllowCredentials(true);

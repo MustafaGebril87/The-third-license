@@ -8,6 +8,8 @@ public class AccessRequestDto {
     private UUID id;
     private AccessRequest.Status status;
     private UUID repositoryId;
+    private String username;
+    private String repositoryName;
     
     // Constructors
     public AccessRequestDto() {}
@@ -16,6 +18,13 @@ public class AccessRequestDto {
         this.id = id;
         this.status = status;
         this.repositoryId = repositoryId;
+    }
+
+    public AccessRequestDto(UUID id, AccessRequest.Status status, UUID repositoryId,
+                            String username, String repositoryName) {
+        this(id, status, repositoryId);
+        this.username = username;
+        this.repositoryName = repositoryName;
     }
 
     // Getters and Setters
@@ -36,5 +45,13 @@ public class AccessRequestDto {
     }
     public void setRepositoryId(UUID repositoryId) {
         this.repositoryId = repositoryId;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public String getRepositoryName() {
+        return repositoryName;
     }
 }

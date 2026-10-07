@@ -26,7 +26,12 @@ public class Share {
     private User user;
 
 
-    private double percentage; // % of ownership in the company
+    /** Ownership units held. Source of truth for equity; percentage is derived from it. */
+    @Column(nullable = false, columnDefinition = "bigint default 0")
+    private long units;
+
+    /** Cached display value: units / company.totalUnits * 100. Maintained by ShareService. */
+    private double percentage;
     private boolean isForSale = false;  
     @Column(nullable = true)
     private BigDecimal price;
@@ -75,6 +80,14 @@ public class Share {
 	public Company getCompany() {
 		// TODO Auto-generated method stub
 		return this.company;
+	}
+
+	public long getUnits() {
+		return units;
+	}
+
+	public void setUnits(long units) {
+		this.units = units;
 	}
 
 	public double getPercentage() {

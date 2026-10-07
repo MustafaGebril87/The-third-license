@@ -18,7 +18,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
-import com.thethirdlicense.Util.ApplicationProperties;
 import com.thethirdlicense.Util.Utils;
 import com.thethirdlicense.controllers.AccessRequestDto;
 import com.thethirdlicense.controllers.ContributionDto;
@@ -59,35 +58,34 @@ public class ContributionService {
     private final RepositoryRepository repositoryRepository;
     @Autowired
     private final CompanyRepository companyRepository;
-    @Autowired
-    private TokenService tokenService;
-    private final ApplicationProperties applicationProperties;
 	private final UserRepository userRepository;
+    private final GitWorkspace workspace;
+
     @Autowired
-    public ContributionService(UserRepository userRepository,ApplicationProperties applicationProperties,CompanyRepository companyRepository,RepositoryRepository repositoryRepository, AccessRequestRepository accessRequestRepository,ContributionRepository contributionRepository, ShareService shareService) {
+    public ContributionService(UserRepository userRepository, CompanyRepository companyRepository, RepositoryRepository repositoryRepository, AccessRequestRepository accessRequestRepository, ContributionRepository contributionRepository, ShareService shareService, GitWorkspace workspace) {
+        this.workspace = workspace;
         this.contributionRepository = contributionRepository;
         this.shareService = shareService;
 		this.accessRequestRepository = accessRequestRepository;
 		this.repositoryRepository = repositoryRepository;
         this.accessRequestRepository = accessRequestRepository;
         this.companyRepository = companyRepository;
-        this.applicationProperties= applicationProperties; 
         this.userRepository = userRepository;
-
     }
     @Transactional
     public void approveContribution(UUID contributionId, User owner) {
         Contribution contribution = contributionRepository.findById(contributionId)
                 .orElseThrow(() -> new IllegalArgumentException("Contribution not found"));
 
-        if (!contribution.getRepository().getCompany().getOwner().equals(owner)) {
+        if (!contribution.getRepository().getCompany().getOwner().getId().equals(owner.getId())) {
             throw new AccessDeniedException("Only the company owner can approve contributions.");
+        }
+        if (contribution.isApproved() || contribution.getStatus() == ContributionStatus.ACCEPTED) {
+            throw new IllegalStateException("Contribution is already approved.");
         }
 
         //  Use origin repo path
-        String rawPath = contribution.getRepository().getLocalPath();
-        String repoPath = rawPath.replace("file:\\", "").replace("file:/", "");
-        System.out.println(">>> Sanitized repo path: " + repoPath);
+        String repoPath = toFilesystemPath(contribution.getRepository().getLocalPath());
 
         int modifiedLines = 0;
         System.out.println(">>> Repo path: " + repoPath);
@@ -146,17 +144,20 @@ public class ContributionService {
         }
 
         contribution.setApproved(true);
+        contribution.setStatus(ContributionStatus.ACCEPTED);
         contribution.setModifiedCodeSize(modifiedLines);
         contributionRepository.save(contribution);
 
-        shareService.recalculateShares(contribution.getRepository().getCompany());
+        shareService.issueForContribution(contribution);
 
-        int rewardKb = (modifiedLines * 50) / 1024; // integer KB
-        double rate = (applicationProperties.getCurrencyExchangeRate());
-        double rewardAmount = rate*(rewardKb);
+    }
 
-        tokenService.generateTokenForUser(contribution.getUser().getId(), rewardAmount);
-
+    /** "file:///repos/x.git" -> "/repos/x.git", "file://C:/repos/x.git" -> "C:/repos/x.git". */
+    static String toFilesystemPath(String gitUrl) {
+        String p = gitUrl.replaceFirst("^file:", "");
+        p = p.replaceFirst("^[/\\\\]+(?=[A-Za-z]:)", "");  // Windows drive letter
+        p = p.replaceFirst("^/{2,}", "/");                  // Unix absolute path
+        return p;
     }
 
     public void declineContribution(UUID contributionId, User owner) {
@@ -206,7 +207,9 @@ public class ContributionService {
         return requests.stream().map(request -> new AccessRequestDto(
                 request.getId(),
                 request.getStatus(),
-                request.getRepository().getId()  // Assumes repository is not null
+                request.getRepository().getId(),
+                request.getUser().getUsername(),
+                request.getRepository().getName()
         )).collect(Collectors.toList());
     }
     @Transactional
@@ -260,11 +263,11 @@ public class ContributionService {
             throw new AccessDeniedException("User does not have access to push to this repository.");
         }
 
-        String repoPath = "C:\\repos\\cloned-repos\\" + repo.getName() + "-" + user.getUsername();
+        File repoPath = workspace.userClone(repo, user);
         String newCommitHash = null;
         String originalCommitHash = null;
 
-        try (Git git = Git.open(new File(repoPath))) {
+        try (Git git = Git.open(repoPath)) {
             Iterable<RevCommit> commits = git.log().setMaxCount(2).call();
 
             for (RevCommit commit : commits) {
@@ -297,6 +300,24 @@ public class ContributionService {
         return contributionRepository.save(contribution);
     }
 	
+    public void trackContribution(User user, Repository_ repo, String branch) {
+        // One pending contribution per user/repo/branch; repeated pushes update the same record
+        boolean alreadyPending = contributionRepository
+                .findByRepositoryIdAndBranchAndStatus(repo.getId(), branch, ContributionStatus.PENDING)
+                .stream()
+                .anyMatch(c -> c.getUser().getId().equals(user.getId()));
+        if (alreadyPending) return;
+
+        Contribution contribution = new Contribution();
+        contribution.setUser(user);
+        contribution.setRepository(repo);
+        contribution.setStatus(ContributionStatus.PENDING);
+        contribution.setCreatedAt(new Date());
+        contribution.setContributionDate(new Date());
+        contribution.setBranch(branch);
+        contributionRepository.save(contribution);
+    }
+
     public void trackContribution(String email, String repoName, String branch) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));

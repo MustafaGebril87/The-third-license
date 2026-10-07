@@ -13,7 +13,21 @@
       "Bash(xargs grep:*)",
       "Bash(mvn spring-boot:run:*)",
       "Bash(netstat -ano)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(xargs basename *)",
+      "Bash(git checkout *)",
+      "Bash(git rm *)",
+      "Bash(grep -v \"\\\\.class$\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(mvn compile *)",
+      "Bash(mvn test-compile *)",
+      "Bash(Get-ChildItem -Path \"D:\\\\OfficeOfMustafa\\\\the third repo\\\\The-third-license\" -Force)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "Bash(grep -E \"\\\\.sh$|Makefile|\\\\.gradle|docker\")",
+      "WebSearch",
+      "Bash(Get-ChildItem src\\\\main\\\\java\\\\com\\\\thethirdlicense\\\\models -Filter \"*.java\")",
+      "Bash(Select-Object -ExpandProperty Name)"
     ]
   }
 }

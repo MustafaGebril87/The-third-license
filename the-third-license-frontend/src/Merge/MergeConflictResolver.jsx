@@ -113,10 +113,10 @@ const MergeConflictResolver = () => {
       });
 
       alert('✅ Merge submitted successfully');
-      navigate('/admin/dashboard');
+      navigate(isOwner ? '/admin' : '/companies');
     } catch (e) {
       console.error(e);
-      alert('❌ Merge failed.');
+      alert('❌ Merge failed: ' + (e.response?.data || e.message));
     }
   };
 

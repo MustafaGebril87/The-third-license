@@ -8,111 +8,119 @@ import Dashboard from './pages/Dashboard/Dashboard';
 import MyCompanies from './pages/Dashboard/MyCompanies';
 import PushFiles from './pages/Dashboard/PushFiles';
 import MyShares from './pages/Shares/MyShares';
-import MyTokens from './pages/Currency/MyTokens';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import Landing from './pages/Landing';
 import Layout from './layout/Layout';
 import AllCompanies from './components/AllCompanies';
-import MergeConflictResolver from '../src/Merge/MergeConflictResolver'; // adjust path if different
-import ConfirmPurchase from './pages/Currency/ConfirmPurchase';
-import BuyCoins from './pages/Currency/BuyCoins';
+import MergeConflictResolver from '../src/Merge/MergeConflictResolver';
 import StripeSuccess from './pages/stripe/StripeSuccess';
 import StripeCancel from './pages/stripe/StripeCancel';
+import { PayoutsReturn, PayoutsRefresh } from './pages/Shares/PayoutsReturn';
+
 const PrivateRoute = ({ children }) => {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  if (loading) return <p style={{ padding: '1rem' }}>Loading…</p>;
   return user ? children : <Navigate to="/login" />;
 };
 
 function App() {
-  const { user } = useAuth();
-console.log("App rendered");
+  const { user, loading } = useAuth();
+
+  if (loading) return <p style={{ padding: '1rem' }}>Loading…</p>;
 
   return (
     <BrowserRouter>
       <Routes>
-	  
+
         {/* Public routes */}
-		<Route path="/" element={<Landing />} />
+        <Route path="/" element={<Landing />} />
         <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <Login />} />
         <Route path="/register" element={user ? <Navigate to="/dashboard" /> : <Register />} />
 
-        {/* Protected + Layout-wrapped routes */}
-		<Route path="/companies/all" element={<AllCompanies />} />
-		<Route path="/coin-market/success" element={<ConfirmPurchase />} />
-		
-<Route
-  path="/pages/Currency/MarketplaceCoins"
-  element={
-    <PrivateRoute>
-      <Marketplace />
-    </PrivateRoute>
-  }
-/>
+        {/* Public / semi-public */}
+        <Route path="/companies/all" element={<AllCompanies />} />
 
-<Route
-  path="/merge/files"
-  element={
-    <PrivateRoute>
-      <MergeConflictResolver />
-    </PrivateRoute>
-  }
-/>
-<Route
-  path="/merge-conflict"
-  element={
-    <PrivateRoute>
-      <MergeConflictResolver />
-    </PrivateRoute>
-  }
-/>
+        <Route
+          path="/marketplace"
+          element={
+            <PrivateRoute>
+              <Marketplace />
+            </PrivateRoute>
+          }
+        />
 
-<Route path="/buy-coins" element={<BuyCoins />} />
-<Route path="/stripe/success" element={<StripeSuccess />} />
-<Route path="/stripe/cancel" element={<StripeCancel />} />
-		<Route path="/dashboard" element={
-		  <PrivateRoute>
-			<Dashboard />
-		  </PrivateRoute>
-		} />
+        <Route
+          path="/pages/Currency/MarketplaceCoins"
+          element={
+            <PrivateRoute>
+              <Marketplace />
+            </PrivateRoute>
+          }
+        />
+
+        <Route
+          path="/merge/files"
+          element={
+            <PrivateRoute>
+              <MergeConflictResolver />
+            </PrivateRoute>
+          }
+        />
+
+        <Route
+          path="/merge-conflict"
+          element={
+            <PrivateRoute>
+              <MergeConflictResolver />
+            </PrivateRoute>
+          }
+        />
+
+        <Route path="/stripe/success" element={<StripeSuccess />} />
+        <Route path="/stripe/cancel" element={<StripeCancel />} />
+
+        {/* Stripe Connect onboarding return / refresh */}
+        <Route path="/payouts/return" element={<PrivateRoute><PayoutsReturn /></PrivateRoute>} />
+        <Route path="/payouts/refresh" element={<PrivateRoute><PayoutsRefresh /></PrivateRoute>} />
+
+        <Route path="/dashboard" element={
+          <PrivateRoute>
+            <Dashboard />
+          </PrivateRoute>
+        } />
 
         <Route
           path="/companies"
           element={
             <PrivateRoute>
-                <MyCompanies />
+              <MyCompanies />
             </PrivateRoute>
           }
         />
+
         <Route
           path="/push"
           element={
             <PrivateRoute>
-                <PushFiles />
+              <PushFiles />
             </PrivateRoute>
           }
         />
+
         <Route
           path="/shares"
           element={
             <PrivateRoute>
-                <MyShares />
+              <MyShares />
             </PrivateRoute>
           }
         />
-        
-        <Route
-          path="/tokens"
-          element={
-            <PrivateRoute>
-                <MyTokens />
-            </PrivateRoute>
-          }
-        />
+
         <Route
           path="/admin"
           element={
             <PrivateRoute>
-                <AdminDashboard />
+              <AdminDashboard />
             </PrivateRoute>
           }
         />

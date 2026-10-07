@@ -111,6 +111,7 @@ const handleSubmit = async (e) => {
             type="text"
             value={branchName}
             onChange={e => setBranchName(e.target.value)}
+            placeholder="e.g. feature/login-page (main is updated by the owner's merge)"
             required
             style={{ width: '100%', padding: '0.5rem' }}
           />

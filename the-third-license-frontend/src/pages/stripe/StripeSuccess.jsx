@@ -3,11 +3,11 @@ import axios from '../../api/axios';
 import Navbar from '../../components/Navbar';
 
 const StripeSuccess = () => {
-  const [message, setMessage] = useState('Capturing your payment...');
+  const [message, setMessage] = useState('Confirming your purchase...');
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    const capture = async () => {
+    const confirm = async () => {
       try {
         const params = new URLSearchParams(window.location.search);
         const sessionId = params.get('session_id');
@@ -18,32 +18,19 @@ const StripeSuccess = () => {
           return;
         }
 
-        await axios.post('/stripe/topup/capture', null, {
+        await axios.post('/shares/buy/stripe/confirm', null, {
           params: { sessionId },
         });
 
-        const pendingUsd = localStorage.getItem('pendingTopUpUsd');
-        const offerId = localStorage.getItem('pendingTopUpOfferId');
-
-        localStorage.removeItem('pendingTopUpUsd');
-        localStorage.removeItem('pendingTopUpOfferId');
-
-        if (pendingUsd && offerId) {
-          setMessage(
-            `Payment captured. Wallet topped up successfully ($${pendingUsd}). You can now buy offer #${offerId} using tokens.`
-          );
-        } else {
-          setMessage('Payment captured. Wallet topped up successfully!');
-        }
-
+        setMessage('Payment confirmed. Share ownership has been transferred to you.');
         setDone(true);
       } catch (err) {
-        setMessage('Failed to capture payment: ' + (err.response?.data || err.message || ''));
+        setMessage('Failed to confirm purchase: ' + (err.response?.data || err.message || ''));
         setDone(true);
       }
     };
 
-    capture();
+    confirm();
   }, []);
 
   return (
@@ -54,7 +41,7 @@ const StripeSuccess = () => {
 
       {done && (
         <div className="mt-4">
-          <a href="/my-tokens" className="text-blue-600 underline">Go to My Tokens</a>
+          <a href="/shares" className="text-blue-600 underline">Go to My Shares</a>
           <span style={{ margin: '0 10px' }}>|</span>
           <a href="/marketplace" className="text-blue-600 underline">Back to Marketplace</a>
         </div>

@@ -16,6 +16,10 @@ import java.util.stream.Collectors;
 @Component
 public class JWTUtil {
 
+    private static final String TYPE_CLAIM = "typ";
+    private static final String ACCESS_TYPE = "access";
+    private static final String REFRESH_TYPE = "refresh";
+
     @Value("${security.jwt.secret}")
     private String secretKey;
 
@@ -34,6 +38,7 @@ public class JWTUtil {
                 .map(Enum::name)
                 .collect(Collectors.toList());
         claims.put("roles", roles);
+        claims.put(TYPE_CLAIM, ACCESS_TYPE);
 
         return Jwts.builder()
                 .setClaims(claims)
@@ -46,6 +51,8 @@ public class JWTUtil {
     public String generateRefreshToken(User user) {
         return Jwts.builder()
                 .setSubject(user.getId().toString())
+                .claim(TYPE_CLAIM, REFRESH_TYPE)
+                .setId(java.util.UUID.randomUUID().toString())
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + refreshExpirationMs))
                 .signWith(SignatureAlgorithm.HS256, secretKey.getBytes())
@@ -82,6 +89,28 @@ public class JWTUtil {
         } catch (JwtException e) {
             return false;
         }
+    }
+
+    /** Valid signature, not expired, and issued as an access token (refresh tokens are rejected). */
+    public boolean validateAccessToken(String token) {
+        return hasType(token, ACCESS_TYPE);
+    }
+
+    /** Valid signature, not expired, and issued as a refresh token. */
+    public boolean validateRefreshToken(String token) {
+        return hasType(token, REFRESH_TYPE);
+    }
+
+    private boolean hasType(String token, String type) {
+        try {
+            return type.equals(getClaims(token).get(TYPE_CLAIM, String.class));
+        } catch (JwtException | IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    public Date getExpiration(String token) {
+        return getClaims(token).getExpiration();
     }
 
     private Claims getClaims(String token) {

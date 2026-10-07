@@ -8,18 +8,16 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import com.thethirdlicense.models.Repository_;
-import com.thethirdlicense.models.RepositoryAccess;
 import com.thethirdlicense.models.Contribution;
 import com.thethirdlicense.models.ContributionStatus;
-import com.thethirdlicense.models.Company;
 import com.thethirdlicense.models.User;
 import com.thethirdlicense.models.AccessRequest;
 import com.thethirdlicense.repositories.RepositoryRepository;
 import com.thethirdlicense.repositories.AccessRequestRepository;
 import com.thethirdlicense.repositories.ContributionRepository;
+import com.thethirdlicense.repositories.RepositoryAccessRepository;
 import com.thethirdlicense.repositories.UserRepository;
 import com.thethirdlicense.security.UserPrincipal;
-import com.thethirdlicense.services.ShareService;
 
 import java.io.File;
 import java.io.IOException;
@@ -36,51 +34,63 @@ public class GitService {
     private final ContributionRepository contributionRepository;
     private final UserRepository userRepository;
     private final ShareService shareService;
+    private final AccessRequestRepository accessRequestRepository;
+    private final RepositoryAccessRepository repositoryAccessRepository;
+    private final GitWorkspace workspace;
 
     @Autowired
-    public GitService(RepositoryRepository repositoryRepository, 
-                      ContributionRepository contributionRepository, 
-                      UserRepository userRepository, 
-                      ShareService shareService) {
+    public GitService(RepositoryRepository repositoryRepository,
+                      ContributionRepository contributionRepository,
+                      UserRepository userRepository,
+                      ShareService shareService,
+                      AccessRequestRepository accessRequestRepository,
+                      RepositoryAccessRepository repositoryAccessRepository,
+                      GitWorkspace workspace) {
         this.repositoryRepository = repositoryRepository;
         this.contributionRepository = contributionRepository;
         this.userRepository = userRepository;
         this.shareService = shareService;
+        this.accessRequestRepository = accessRequestRepository;
+        this.repositoryAccessRepository = repositoryAccessRepository;
+        this.workspace = workspace;
     }
-    
-    
 
     public String cloneRepository(UUID repoId, User user) throws GitAPIException {
         Repository_ repo = repositoryRepository.findById(repoId)
                 .orElseThrow(() -> new IllegalArgumentException("Repository not found"));
 
-        // Updated access check: use AccessRequest instead of RepositoryAccess
         if (!hasAccess(repo, user)) {
             throw new AccessDeniedException("You don't have permission to clone this repository.");
         }
 
-        String clonePath = "C:\\repos\\cloned-repos\\" + repo.getName() + "-" + user.getUsername();
-        File cloneDir = new File(clonePath);
+        File cloneDir = workspace.userClone(repo, user);
+        if (new File(cloneDir, ".git").exists()) {
+            return "Repository already cloned.";
+        }
 
         Git.cloneRepository()
             .setURI(repo.getGitUrl())
             .setDirectory(cloneDir)
-            .call();
+            .call()
+            .close();
 
-        return "Repository cloned successfully at: " + clonePath;
+        return "Repository cloned successfully.";
     }
 
-    @Autowired
-    private AccessRequestRepository accessRequestRepository;
+    public boolean isCompanyOwner(Repository_ repo, User user) {
+        return repo.getCompany() != null
+                && repo.getCompany().getOwner() != null
+                && repo.getCompany().getOwner().getId().equals(user.getId());
+    }
 
+    /** Owner, approved access requester, or holder of a RepositoryAccess grant (e.g. share buyer). */
     public boolean hasAccess(Repository_ repo, User user) {
-        return accessRequestRepository.existsByRepositoryAndUserAndStatus(
-                repo, user, AccessRequest.Status.APPROVED
-        );
+        return isCompanyOwner(repo, user)
+                || accessRequestRepository.existsByRepositoryAndUserAndStatus(repo, user, AccessRequest.Status.APPROVED)
+                || repositoryAccessRepository.findByUserAndRepository(user, repo).isPresent();
     }
 
     public void pushCode(UUID repoId, int codeSize) throws GitAPIException, IOException {
-        // Get the authenticated user
         Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         if (!(principal instanceof UserPrincipal)) {
             throw new AccessDeniedException("User not authenticated");
@@ -92,12 +102,11 @@ public class GitService {
         Repository_ repo = repositoryRepository.findById(repoId)
                 .orElseThrow(() -> new IllegalArgumentException("Repository not found"));
 
-        if (!accessRequestRepository.existsByRepositoryAndUserAndStatus(repo, user, AccessRequest.Status.APPROVED)) {
+        if (!hasAccess(repo, user)) {
             throw new AccessDeniedException("You don't have permission to push.");
         }
 
-        String repoPath = "C:\\repos\\cloned-repos\\" + repo.getName() + "-" + user.getUsername();
-        try (Git git = Git.open(new File(repoPath))) {
+        try (Git git = Git.open(workspace.userClone(repo, user))) {
             Iterable<RevCommit> commits = git.log().setMaxCount(2).call();
             String newCommitHash = null, originalCommitHash = null;
 
@@ -118,27 +127,18 @@ public class GitService {
 
             contributionRepository.save(contribution);
         }
-        // Simulate push
-        Contribution contribution = new Contribution();
-        contribution.setRepository(repo);
-        contribution.setUser(user);
-        contribution.setCodeSize(codeSize);
-        contribution.setApproved(false); // Awaiting owner approval
-        contribution.setContributionDate(new Date());
-
-        contributionRepository.save(contribution);
     }
 
     public List<String> listPushes(UUID repoId, User user) throws GitAPIException, IOException {
         Repository_ repo = repositoryRepository.findById(repoId)
                 .orElseThrow(() -> new IllegalArgumentException("Repository not found"));
 
-        if (!accessRequestRepository.existsByRepositoryAndUserAndStatus(repo, user, AccessRequest.Status.APPROVED)) {
+        if (!hasAccess(repo, user)) {
             throw new AccessDeniedException("You don't have access.");
         }
 
         List<String> commits = new ArrayList<>();
-        try (Git git = Git.open(new File("/tmp/" + repo.getName()))) {
+        try (Git git = Git.open(workspace.userClone(repo, user))) {
             Iterable<RevCommit> log = git.log().call();
             for (RevCommit commit : log) {
                 commits.add(commit.getFullMessage());
@@ -147,25 +147,6 @@ public class GitService {
 
         return commits;
     }
-
-
-    public void approveContribution(UUID contributionId, User owner) {
-        Contribution contribution = contributionRepository.findById(contributionId)
-                .orElseThrow(() -> new IllegalArgumentException("Contribution not found"));
-
-        Repository_ repo = contribution.getRepository();  // Now this should work
-
-        if (!repo.getOwner().equals(owner)) {
-            throw new AccessDeniedException("Only the repository owner can approve contributions.");
-        }
-
-        contribution.setApproved(true);
-        contributionRepository.save(contribution);
-
-        shareService.recalculateShares(repo.getCompany());  // Ensure repository has a company field
-    }
-
-
 
 
 }

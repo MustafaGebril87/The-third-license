@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -43,6 +44,7 @@ public class User implements UserDetails {  //  Implement UserDetails
     @Column(nullable = false, unique = true, length = 100)
     private String email;
 
+    @JsonIgnore
     @Column(nullable = false)
     private String password;
 
@@ -66,6 +68,16 @@ public class User implements UserDetails {  //  Implement UserDetails
 
     private LocalDateTime lastLogin;
 
+    /** Stripe Connect (Express) account that receives this user's share-sale proceeds. */
+    @JsonIgnore
+    @Column(name = "stripe_account_id", unique = true)
+    private String stripeAccountId;
+
+    /** True once Stripe reports the connected account can receive transfers and payouts. */
+    @Column(name = "payouts_enabled", nullable = false, columnDefinition = "boolean default false")
+    private boolean payoutsEnabled;
+
+    @JsonIgnore
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<RefreshToken> refreshTokens;
 
@@ -73,6 +85,7 @@ public class User implements UserDetails {  //  Implement UserDetails
     @JsonManagedReference("user-company")
     private List<Company> ownedCompanies;
 
+    @JsonIgnore
     @ManyToMany
     @JoinTable(
             name = "user_contributions",
@@ -160,6 +173,10 @@ public class User implements UserDetails {  //  Implement UserDetails
     public void setReputationScore(int reputationScore) { this.reputationScore = reputationScore; }
     public LocalDateTime getDateJoined() { return dateJoined; }
     public LocalDateTime getLastLogin() { return lastLogin; }
+    public String getStripeAccountId() { return stripeAccountId; }
+    public void setStripeAccountId(String stripeAccountId) { this.stripeAccountId = stripeAccountId; }
+    public boolean isPayoutsEnabled() { return payoutsEnabled; }
+    public void setPayoutsEnabled(boolean payoutsEnabled) { this.payoutsEnabled = payoutsEnabled; }
     public void setLastLogin(LocalDateTime lastLogin) { this.lastLogin = lastLogin; }
     public List<Company> getOwnedCompanies() { return ownedCompanies; }
     public void setOwnedCompanies(List<Company> ownedCompanies) { this.ownedCompanies = ownedCompanies; }
