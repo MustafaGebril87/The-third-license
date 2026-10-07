@@ -20,6 +20,10 @@ public class Company {
     @Column(nullable = false, unique = true)
     private String name;
 
+    /** Total ownership units ever issued for this company (100% = totalUnits). */
+    @Column(name = "total_units", nullable = false, columnDefinition = "bigint default 0")
+    private long totalUnits;
+
     @ManyToOne
     @JoinColumn(name = "owner_id", nullable = false)
     @JsonBackReference("user-company")
@@ -99,6 +103,14 @@ public class Company {
     public void removeRepository(Repository_ repository) {
         repositories.remove(repository);
         repository.setCompany(null);
+    }
+
+    public long getTotalUnits() {
+        return totalUnits;
+    }
+
+    public void setTotalUnits(long totalUnits) {
+        this.totalUnits = totalUnits;
     }
 
     public List<Share> getShares() {

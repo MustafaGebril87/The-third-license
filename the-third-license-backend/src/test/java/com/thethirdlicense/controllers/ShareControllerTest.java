@@ -59,6 +59,7 @@ class ShareControllerTest {
         share.setCompany(company);
         share.setOwner(seller);
         share.setPercentage(30.0);
+        share.setUnits(300_000);
         share.setForSale(true);
         share.setPrice(new BigDecimal("50.00"));
     }
@@ -126,9 +127,9 @@ class ShareControllerTest {
         markedShare.setOwner(seller);
         markedShare.setCompany(company);
 
-        when(shareService.markShareForSale(shareId, new BigDecimal("100.00"))).thenReturn(markedShare);
+        when(shareService.markShareForSale(shareId, new BigDecimal("100.00"), seller.getId())).thenReturn(markedShare);
 
-        ResponseEntity<ShareDTO> response = controller.markShareForSale(shareId, new BigDecimal("100.00"));
+        ResponseEntity<ShareDTO> response = controller.markShareForSale(shareId, new BigDecimal("100.00"), sellerPrincipal);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().getPrice()).isEqualByComparingTo(new BigDecimal("100.00"));
@@ -145,9 +146,9 @@ class ShareControllerTest {
         unmarked.setOwner(seller);
         unmarked.setCompany(company);
 
-        when(shareService.unmarkShareForSale(shareId)).thenReturn(unmarked);
+        when(shareService.unmarkShareForSale(shareId, seller.getId())).thenReturn(unmarked);
 
-        ResponseEntity<Share> response = controller.unmarkShareForSale(shareId);
+        ResponseEntity<ShareDTO> response = controller.unmarkShareForSale(shareId, sellerPrincipal);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().isForSale()).isFalse();
@@ -163,9 +164,9 @@ class ShareControllerTest {
         splitOff.setOwner(seller);
         splitOff.setCompany(company);
 
-        when(shareService.splitShare(shareId, 10.0)).thenReturn(splitOff);
+        when(shareService.splitShare(shareId, 10.0, seller.getId())).thenReturn(splitOff);
 
-        ResponseEntity<ShareDTO> response = controller.splitShare(shareId, 10.0);
+        ResponseEntity<ShareDTO> response = controller.splitShare(shareId, 10.0, sellerPrincipal);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().getPercentage()).isEqualTo(10.0);
@@ -178,19 +179,14 @@ class ShareControllerTest {
         UUID shareId = share.getId();
         StripeCheckoutResponse fakeCheckout = new StripeCheckoutResponse("sess_123", "https://checkout.stripe.com/sess_123");
 
-        Authentication auth = mock(Authentication.class);
-        when(auth.getPrincipal()).thenReturn(buyerPrincipal);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "frontendOrigin", "http://localhost:5173");
         when(shareStripeService.initiatePurchase(
                 buyer.getId(), shareId,
                 "http://localhost:5173/stripe/success",
                 "http://localhost:5173/stripe/cancel"))
             .thenReturn(fakeCheckout);
 
-        ResponseEntity<StripeCheckoutResponse> response = controller.initiateSharePurchase(
-                shareId,
-                "http://localhost:5173/stripe/success",
-                "http://localhost:5173/stripe/cancel",
-                auth);
+        ResponseEntity<StripeCheckoutResponse> response = controller.initiateSharePurchase(shareId, buyerPrincipal);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().getSessionId()).isEqualTo("sess_123");
@@ -203,11 +199,9 @@ class ShareControllerTest {
 
     @Test
     void confirmSharePurchase_validSession_returns200() throws StripeException {
-        Authentication auth = mock(Authentication.class);
-        when(auth.getPrincipal()).thenReturn(buyerPrincipal);
         doNothing().when(shareStripeService).confirmPurchase(buyer.getId(), "sess_123");
 
-        ResponseEntity<String> response = controller.confirmSharePurchase("sess_123", auth);
+        ResponseEntity<String> response = controller.confirmSharePurchase("sess_123", buyerPrincipal);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).contains("purchased");
@@ -221,7 +215,7 @@ class ShareControllerTest {
         UUID companyId = company.getId();
         when(shareService.getSharesByCompany(companyId)).thenReturn(List.of(share));
 
-        ResponseEntity<List<Share>> response = controller.getSharesByCompany(companyId);
+        ResponseEntity<List<ShareDTO>> response = controller.getSharesByCompany(companyId);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).hasSize(1);

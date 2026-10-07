@@ -39,6 +39,8 @@ class ContributionControllerTest {
     @Mock private MergeRequestRepository mergeRequestRepository;
     @Mock private RepositoryAccessRepository repositoryAccessRepository;
     @Mock private UserService userService;
+    @Mock private com.thethirdlicense.services.GitService gitService;
+    @Mock private com.thethirdlicense.services.GitWorkspace workspace;
 
     @InjectMocks
     private ContributionController controller;

@@ -33,6 +33,8 @@ import java.util.*;
 @RequestMapping("/api/companies")
 public class CompanyController {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(CompanyController.class);
+
     private final CompanyService companyService;
     private final UserRepository userRepository;
     private final RepositoryRepository repositoryRepository;
@@ -65,7 +67,7 @@ public class CompanyController {
     }
 
     @PostMapping("/open")
-    public ResponseEntity<?> openCompany(@RequestBody Company company) {
+    public ResponseEntity<?> openCompany(@RequestBody CreateCompanyRequest request) {
         try {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
             if (authentication == null || !(authentication.getPrincipal() instanceof UserPrincipal)) {
@@ -76,12 +78,12 @@ public class CompanyController {
             User owner = userRepository.findByUsername(userPrincipal.getUsername())
                     .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-            Company createdCompany = companyService.openCompany(company, owner);
+            Company createdCompany = companyService.openCompany(new Company(request.getName(), owner), owner);
             Repository_ repository = repositoryRepository.findByCompany(createdCompany).orElse(null);
 
-            return ResponseEntity.ok("Company created! Repository URL: " + (repository != null ? repository.getGitUrl() : "No repo created"));
+            return ResponseEntity.ok("Company created! Repository: " + (repository != null ? repository.getName() : "No repo created"));
         } catch (Exception e) {
-            return ResponseEntity.status(500).body("Error: " + e.getMessage());
+            return errorResponse(e, "Creating company");
         }
     }
 
@@ -107,7 +109,7 @@ public class CompanyController {
 
             return ResponseEntity.ok(message);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body("Error: " + e.getMessage());
+            return errorResponse(e, "Cloning repository");
         }
     }
 
@@ -155,8 +157,20 @@ public class CompanyController {
     }
 
     @GetMapping("/{repositoryId}/contributions")
-    public ResponseEntity<List<Contribution>> listContributions(@PathVariable UUID repositoryId) {
-        List<Contribution> contributions = contributionRepository.findByRepositoryId(repositoryId);
+    public ResponseEntity<?> listContributions(@PathVariable UUID repositoryId) {
+        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (!(principal instanceof UserPrincipal userPrincipal)) {
+            return ResponseEntity.status(403).build();
+        }
+        Repository_ repo = repositoryRepository.findById(repositoryId).orElse(null);
+        if (repo == null) {
+            return ResponseEntity.notFound().build();
+        }
+        if (!repo.getCompany().getOwner().getId().equals(userPrincipal.getId())) {
+            return ResponseEntity.status(403).body("Only the company owner can list contributions.");
+        }
+        List<ContributionDto> contributions = contributionRepository.findByRepositoryId(repositoryId)
+                .stream().map(ContributionDto::new).toList();
         return ResponseEntity.ok(contributions);
     }
     
@@ -178,7 +192,7 @@ public class CompanyController {
 
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body("Error: " + e.getMessage());
+            return errorResponse(e, "Loading companies");
         }
     }
 
@@ -197,7 +211,7 @@ public class CompanyController {
 
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body("Error: " + e.getMessage());
+            return errorResponse(e, "Loading companies");
         }
     }
     @GetMapping("/my-companies")
@@ -231,8 +245,18 @@ public class CompanyController {
 
             return ResponseEntity.ok(Map.of("companies", companyList));
         } catch (Exception e) {
-            return ResponseEntity.status(500).body("Error: " + e.getMessage());
+            return errorResponse(e, "Loading companies");
         }
     }
 
+    private ResponseEntity<String> errorResponse(Exception e, String action) {
+        if (e instanceof IllegalArgumentException || e instanceof IllegalStateException) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+        if (e instanceof UnauthorizedException || e instanceof org.springframework.security.access.AccessDeniedException) {
+            return ResponseEntity.status(403).body(e.getMessage());
+        }
+        log.error("{} failed", action, e);
+        return ResponseEntity.status(500).body(action + " failed.");
+    }
 }

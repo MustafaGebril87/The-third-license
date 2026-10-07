@@ -13,6 +13,7 @@ public class ShareDTO {
     private BigDecimal price;
     private UUID ownerId;
     private String ownerUsername;
+    private long units;
 
     public ShareDTO(Share share) {
         this.id = share.getId();
@@ -22,6 +23,7 @@ public class ShareDTO {
         this.price = share.getPrice();
         this.ownerId = share.getOwner().getId();
         this.ownerUsername = share.getOwner().getUsername();
+        this.units = share.getUnits();
     }
 
     public UUID getId() {
@@ -42,6 +44,14 @@ public class ShareDTO {
 
     public BigDecimal getPrice() {
         return price;
+    }
+
+    public UUID getOwnerId() {
+        return ownerId;
+    }
+
+    public long getUnits() {
+        return units;
     }
 
     public String getOwnerUsername() {

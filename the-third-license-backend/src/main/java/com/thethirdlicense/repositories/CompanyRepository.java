@@ -12,6 +12,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface CompanyRepository extends JpaRepository<Company, UUID> {
+
+	  /** Row-locked lookup so concurrent unit issuance can't lose updates to totalUnits. Requires a transaction. */
+	  @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+	  @Query("SELECT c FROM Company c WHERE c.id = :id")
+	  java.util.Optional<Company> findForUpdateById(@org.springframework.data.repository.query.Param("id") UUID id);
+
+	  List<Company> findByTotalUnits(long totalUnits);
 	  Optional<Company> findByName(String name);
 	  boolean existsByName(String name);
 	  List<Company> findByOwner(User user);
@@ -20,4 +27,5 @@ public interface CompanyRepository extends JpaRepository<Company, UUID> {
 	  List<Company> findByRepositoryAccessUser(@Param("user") User user);
 
 	  List<Company> findByNameContainingIgnoreCase(String name);
+	  boolean existsByNameIgnoreCase(String name);
 }

@@ -1,11 +1,15 @@
 package com.thethirdlicense.scenarios;
 
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.any;
+
 import com.stripe.exception.StripeException;
 import com.stripe.model.checkout.Session;
 import com.thethirdlicense.controllers.StripeCheckoutResponse;
 import com.thethirdlicense.models.*;
 import com.thethirdlicense.repositories.*;
 import com.thethirdlicense.security.JWTUtil;
+import com.thethirdlicense.models.StripeSharePurchase;
 import com.thethirdlicense.services.StripeService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,6 +55,7 @@ class ShareMarketplaceScenarioTest {
     @Autowired private RepositoryRepository repositoryRepository;
     @Autowired private ShareRepository shareRepository;
     @Autowired private RepositoryAccessRepository repositoryAccessRepository;
+    @Autowired private StripeSharePurchaseRepository purchaseRepository;
     @Autowired private JWTUtil jwtUtil;
     @Autowired private PasswordEncoder passwordEncoder;
 
@@ -71,9 +76,12 @@ class ShareMarketplaceScenarioTest {
     void setUp() throws StripeException {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
 
-        alice = userRepository.save(new User(
+        User aliceSeed = new User(
                 "alice_mkt_" + suffix, "alice_mkt_" + suffix + "@test.com",
-                passwordEncoder.encode("strongpass1"), new HashSet<>()));
+                passwordEncoder.encode("strongpass1"), new HashSet<>());
+        aliceSeed.setStripeAccountId("acct_test_alice_" + suffix);
+        aliceSeed.setPayoutsEnabled(true);   // Alice has finished Stripe Connect onboarding
+        alice = userRepository.save(aliceSeed);
         bob = userRepository.save(new User(
                 "bob_mkt_" + suffix, "bob_mkt_" + suffix + "@test.com",
                 passwordEncoder.encode("strongpass1"), new HashSet<>()));
@@ -81,7 +89,9 @@ class ShareMarketplaceScenarioTest {
         aliceJwt = jwtUtil.generateToken(alice);
         bobJwt   = jwtUtil.generateToken(bob);
 
-        company = companyRepository.save(new Company("acme-mkt-" + suffix, alice));
+        Company companySeed = new Company("acme-mkt-" + suffix, alice);
+        companySeed.setTotalUnits(1_000_000);
+        company = companyRepository.save(companySeed);
 
         repository = new Repository_();
         repository.setId(UUID.randomUUID());
@@ -96,12 +106,13 @@ class ShareMarketplaceScenarioTest {
         aliceShare.setUser(alice);
         aliceShare.setCompany(company);
         aliceShare.setPercentage(30.0);
+        aliceShare.setUnits(300_000);
         aliceShare.setForSale(false);
         aliceShare = shareRepository.save(aliceShare);
 
         // Mock Stripe to avoid real API calls
         StripeCheckoutResponse fakeCheckout = new StripeCheckoutResponse(FAKE_SESSION_ID, "https://checkout.stripe.com/" + FAKE_SESSION_ID);
-        when(stripeService.createCheckoutSession(anyDouble(), anyString(), anyString()))
+        when(stripeService.createCheckoutSession(any(java.math.BigDecimal.class), anyString(), anyString(), anyString(), anyMap()))
                 .thenReturn(fakeCheckout);
 
         Session fakeSession = mock(Session.class);
@@ -112,6 +123,7 @@ class ShareMarketplaceScenarioTest {
 
     @AfterEach
     void tearDown() {
+        purchaseRepository.findByStripeSessionId(FAKE_SESSION_ID).ifPresent(purchaseRepository::delete);
         repositoryAccessRepository.findByUser(bob).forEach(repositoryAccessRepository::delete);
         shareRepository.findByUser(alice).forEach(shareRepository::delete);
         shareRepository.findByUser(bob).forEach(shareRepository::delete);
@@ -275,5 +287,106 @@ class ShareMarketplaceScenarioTest {
                         + "/stripe/create?successUrl=http://x&cancelUrl=http://y",
                 null, String.class);
         assertThat(response.getStatusCode().is4xxClientError()).isTrue();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Scenario: Owner cannot buy their own share → 400
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void ownerCannotBuyOwnShare_returns400() {
+        // Alice marks her share for sale
+        restTemplate.exchange(
+                "/api/shares/" + aliceShare.getId() + "/mark-for-sale?price=50.00",
+                HttpMethod.POST, new HttpEntity<>(bearer(aliceJwt)), Map.class);
+
+        // Alice tries to buy it herself
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/api/shares/buy/" + aliceShare.getId()
+                        + "/stripe/create?successUrl=http://localhost/success&cancelUrl=http://localhost/cancel",
+                HttpMethod.POST,
+                new HttpEntity<>(bearer(aliceJwt)),
+                String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Scenario: Confirming the same Stripe session twice → idempotent 200
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void doubleConfirm_isIdempotent() {
+        // Alice marks for sale, Bob initiates and confirms once
+        restTemplate.exchange(
+                "/api/shares/" + aliceShare.getId() + "/mark-for-sale?price=50.00",
+                HttpMethod.POST, new HttpEntity<>(bearer(aliceJwt)), Map.class);
+
+        restTemplate.exchange(
+                "/api/shares/buy/" + aliceShare.getId()
+                        + "/stripe/create?successUrl=http://localhost/success&cancelUrl=http://localhost/cancel",
+                HttpMethod.POST, new HttpEntity<>(bearer(bobJwt)), Map.class);
+
+        restTemplate.exchange(
+                "/api/shares/buy/stripe/confirm?sessionId=" + FAKE_SESSION_ID,
+                HttpMethod.POST, new HttpEntity<>(bearer(bobJwt)), String.class);
+
+        // Bob attempts to confirm the same session a second time
+        ResponseEntity<String> second = restTemplate.exchange(
+                "/api/shares/buy/stripe/confirm?sessionId=" + FAKE_SESSION_ID,
+                HttpMethod.POST,
+                new HttpEntity<>(bearer(bobJwt)),
+                String.class);
+
+        // e.g. the webhook completed it first — the second confirm must not fail or transfer again
+        assertThat(second.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(shareRepository.findById(aliceShare.getId()).orElseThrow().getOwner().getId()).isEqualTo(bob.getId());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Security regression: only the owner can list / split / unlist a share
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void nonOwner_cannotListSplitOrUnlistSomeoneElsesShare() {
+        ResponseEntity<String> mark = restTemplate.exchange(
+                "/api/shares/" + aliceShare.getId() + "/mark-for-sale?price=0.50",
+                HttpMethod.POST, new HttpEntity<>(bearer(bobJwt)), String.class);
+        assertThat(mark.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        ResponseEntity<String> split = restTemplate.exchange(
+                "/api/shares/" + aliceShare.getId() + "/split?percentage=1",
+                HttpMethod.POST, new HttpEntity<>(bearer(bobJwt)), String.class);
+        assertThat(split.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        Share unchanged = shareRepository.findById(aliceShare.getId()).orElseThrow();
+        assertThat(unchanged.isForSale()).isFalse();
+        assertThat(unchanged.getPercentage()).isEqualTo(aliceShare.getPercentage());
+
+        // Alice lists it; Bob still can't take it off the market
+        restTemplate.exchange("/api/shares/" + aliceShare.getId() + "/mark-for-sale?price=50.00",
+                HttpMethod.POST, new HttpEntity<>(bearer(aliceJwt)), String.class);
+        ResponseEntity<String> unmark = restTemplate.exchange(
+                "/api/shares/" + aliceShare.getId() + "/unmark-for-sale",
+                HttpMethod.POST, new HttpEntity<>(bearer(bobJwt)), String.class);
+        assertThat(unmark.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(shareRepository.findById(aliceShare.getId()).orElseThrow().isForSale()).isTrue();
+    }
+
+    @Test
+    void checkoutUrls_areBuiltServerSide_notTakenFromRequest() throws StripeException {
+        restTemplate.exchange("/api/shares/" + aliceShare.getId() + "/mark-for-sale?price=50.00",
+                HttpMethod.POST, new HttpEntity<>(bearer(aliceJwt)), String.class);
+
+        restTemplate.exchange("/api/shares/buy/" + aliceShare.getId()
+                        + "/stripe/create?successUrl=https://evil.example&cancelUrl=https://evil.example",
+                HttpMethod.POST, new HttpEntity<>(bearer(bobJwt)), String.class);
+
+        org.mockito.Mockito.verify(stripeService).createCheckoutSession(
+                org.mockito.ArgumentMatchers.eq(new java.math.BigDecimal("50.00")),
+                org.mockito.ArgumentMatchers.eq(alice.getStripeAccountId()),
+                org.mockito.ArgumentMatchers.eq("http://localhost:5173/stripe/success"),
+                org.mockito.ArgumentMatchers.eq("http://localhost:5173/stripe/cancel"),
+                org.mockito.ArgumentMatchers.anyMap());
     }
 }

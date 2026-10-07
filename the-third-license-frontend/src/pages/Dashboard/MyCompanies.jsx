@@ -71,7 +71,8 @@ const MyCompanies = () => {
         mode: 'pull'   // ✅ tell backend this is a pull, not a merge request trigger
       },
     });
-    alert(`✅ Pulled content of ${filePath}:\n\n` + res.data.content);
+    const pulled = res.data?.pulledFiles?.[0];
+    alert(`✅ Pulled content of ${filePath}:\n\n` + (pulled?.content ?? ''));
   } catch (err) {
     const status = err.response?.status;
     const message = err.response?.data || '';

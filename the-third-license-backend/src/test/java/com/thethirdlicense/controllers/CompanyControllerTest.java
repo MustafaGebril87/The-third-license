@@ -84,17 +84,23 @@ class CompanyControllerTest {
         Repository_ repo = new Repository_();
         repo.setId(UUID.randomUUID());
         repo.setGitUrl("http://localhost:9090/alice/acme.git");
+        repo.setName("Acme-repo");
 
         when(companyService.openCompany(any(Company.class), eq(owner))).thenAnswer(inv -> company);
         when(repositoryRepository.findByCompany(company)).thenReturn(Optional.of(repo));
 
-        Company requestBody = new Company();
-        requestBody.setName("Acme Inc");
-
-        ResponseEntity<?> response = controller.openCompany(requestBody);
+        ResponseEntity<?> response = controller.openCompany(new CreateCompanyRequest("Acme Inc"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody().toString()).contains("http://localhost:9090/alice/acme.git");
+        assertThat(response.getBody().toString()).contains("Acme-repo");
+        // The server-side path of the repo is not exposed
+        assertThat(response.getBody().toString()).doesNotContain("localhost:9090");
+
+        // The entity handed to the service is built server-side: request can't pick id/owner
+        org.mockito.ArgumentCaptor<Company> captor = org.mockito.ArgumentCaptor.forClass(Company.class);
+        verify(companyService).openCompany(captor.capture(), eq(owner));
+        assertThat(captor.getValue().getId()).isNull();
+        assertThat(captor.getValue().getOwner()).isSameAs(owner);
     }
 
     // ── Scenario: Unauthenticated user tries to open a company ───────────────
@@ -103,10 +109,9 @@ class CompanyControllerTest {
     void openCompany_notAuthenticated_returns500WithError() {
         mockAnonymousContext();
 
-        ResponseEntity<?> response = controller.openCompany(new Company());
+        ResponseEntity<?> response = controller.openCompany(new CreateCompanyRequest("Acme"));
 
-        // The controller catches UnauthorizedException and returns 500
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     // ── Scenario: User fetches their own companies ────────────────────────────

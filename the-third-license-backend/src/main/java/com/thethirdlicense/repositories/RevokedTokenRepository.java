@@ -5,6 +5,6 @@ import org.springframework.stereotype.Repository;
 import com.thethirdlicense.models.RevokedToken;
 
 @Repository
-public interface RevokedTokenRepository extends JpaRepository<RevokedToken, Long> {
+public interface RevokedTokenRepository extends JpaRepository<RevokedToken, String> {
     boolean existsByToken(String token);
 }

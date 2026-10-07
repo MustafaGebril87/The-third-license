@@ -214,4 +214,82 @@ class AuthScenarioTest {
                 String.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Security regressions: token types, revocation, /me
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private ResponseEntity<Map> registerAndLogin() {
+        restTemplate.postForEntity("/api/auth/register", registerBody(), String.class);
+        return restTemplate.postForEntity("/api/auth/login",
+                Map.of("username", username(), "password", "strongpass1"), Map.class);
+    }
+
+    @Test
+    void refreshToken_cannotBeUsedAsAccessToken() {
+        ResponseEntity<Map> login = registerAndLogin();
+        String refresh = extractCookie(login, "refresh_token");
+
+        HttpHeaders bearer = new HttpHeaders();
+        bearer.setBearerAuth(refresh);
+        ResponseEntity<String> call = restTemplate.exchange(
+                "/api/companies/all", HttpMethod.GET, new HttpEntity<>(bearer), String.class);
+        assertThat(call.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+
+        ResponseEntity<String> viaCookie = restTemplate.exchange(
+                "/api/companies/all", HttpMethod.GET, new HttpEntity<>(cookieHeader("access_token", refresh)), String.class);
+        assertThat(viaCookie.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void afterLogout_oldAccessTokenIsRejected() {
+        ResponseEntity<Map> login = registerAndLogin();
+        String access = extractCookie(login, "access_token");
+        HttpEntity<?> withCookie = new HttpEntity<>(cookieHeader("access_token", access));
+
+        restTemplate.exchange("/api/auth/logout", HttpMethod.POST, withCookie, String.class);
+
+        ResponseEntity<String> reuse = restTemplate.exchange(
+                "/api/companies/all", HttpMethod.GET, withCookie, String.class);
+        assertThat(reuse.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void refresh_issuesNewAccessToken_andOldRefreshTokenCannotBeReused() {
+        ResponseEntity<Map> login = registerAndLogin();
+        String refresh = extractCookie(login, "refresh_token");
+        HttpEntity<?> withRefresh = new HttpEntity<>(cookieHeader("refresh_token", refresh));
+
+        ResponseEntity<Map> refreshed = restTemplate.exchange("/api/auth/refresh", HttpMethod.POST, withRefresh, Map.class);
+        assertThat(refreshed.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String newAccess = extractCookie(refreshed, "access_token");
+        assertThat(newAccess).isNotBlank();
+
+        ResponseEntity<String> me = restTemplate.exchange("/api/users/me", HttpMethod.GET,
+                new HttpEntity<>(cookieHeader("access_token", newAccess)), String.class);
+        assertThat(me.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(me.getBody()).contains(username()).doesNotContain("password");
+
+        // Rotated: the original refresh token is now revoked
+        ResponseEntity<String> again = restTemplate.exchange("/api/auth/refresh", HttpMethod.POST, withRefresh, String.class);
+        assertThat(again.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void regularUser_cannotListUsers_orGrantThemselvesAdmin() {
+        ResponseEntity<Map> login = registerAndLogin();
+        String access = extractCookie(login, "access_token");
+        String id = String.valueOf(login.getBody().get("id"));
+        HttpHeaders h = cookieHeader("access_token", access);
+
+        ResponseEntity<String> list = restTemplate.exchange("/api/users", HttpMethod.GET, new HttpEntity<>(h), String.class);
+        assertThat(list.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        h.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+        ResponseEntity<String> grant = restTemplate.exchange("/api/users/" + id + "/roles", HttpMethod.POST,
+                new HttpEntity<>("\"ADMIN\"", h), String.class);
+        assertThat(grant.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(userRepository.findByUsername(username()).orElseThrow().getRoles())
+                .doesNotContain(com.thethirdlicense.models.Role.ADMIN);
+    }
 }

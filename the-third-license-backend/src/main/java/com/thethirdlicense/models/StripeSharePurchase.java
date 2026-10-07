@@ -30,6 +30,9 @@ public class StripeSharePurchase {
     @Column(nullable = false)
     private BigDecimal priceUsd;
 
+    /** Seller's connected account the payment was routed to (null for pre-Connect purchases). */
+    private String sellerAccountId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Status status = Status.PENDING;
@@ -53,6 +56,9 @@ public class StripeSharePurchase {
 
     public BigDecimal getPriceUsd() { return priceUsd; }
     public void setPriceUsd(BigDecimal priceUsd) { this.priceUsd = priceUsd; }
+
+    public String getSellerAccountId() { return sellerAccountId; }
+    public void setSellerAccountId(String sellerAccountId) { this.sellerAccountId = sellerAccountId; }
 
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }

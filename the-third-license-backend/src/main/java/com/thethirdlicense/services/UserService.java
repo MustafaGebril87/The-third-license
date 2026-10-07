@@ -39,12 +39,27 @@ public class UserService {
         return userRepository.existsByEmail(email);
     }
 
-    // Update user details
-    public Optional<User> updateUser(UUID id, User userDetails) {
+    // Update profile fields only — roles/balance are never taken from client input
+    public Optional<User> updateProfile(UUID id, String username, String email) {
         return userRepository.findById(id).map(user -> {
-            user.setUsername(userDetails.getUsername());
-            user.setEmail(userDetails.getEmail());
-            user.setRoles(userDetails.getRoles());
+            if (username != null && !username.isBlank() && !username.equals(user.getUsername())) {
+                if (!username.matches("^[A-Za-z0-9][A-Za-z0-9._-]{2,49}$") || username.contains("..")) {
+                    throw new IllegalArgumentException("Username may only contain letters, digits, '.', '_' and '-' (3-50 characters).");
+                }
+                if (userRepository.findByUsername(username).isPresent()) {
+                    throw new IllegalStateException("Username is not available.");
+                }
+                user.setUsername(username);
+            }
+            if (email != null && !email.isBlank() && !email.equalsIgnoreCase(user.getEmail())) {
+                if (!email.contains("@")) {
+                    throw new IllegalArgumentException("Invalid email address.");
+                }
+                if (userRepository.findByEmail(email).isPresent()) {
+                    throw new IllegalStateException("Email is not available.");
+                }
+                user.setEmail(email);
+            }
             return userRepository.save(user);
         });
     }

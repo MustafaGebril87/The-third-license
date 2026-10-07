@@ -28,11 +28,7 @@ const AdminDashboard = () => {
 
   const handleApprove = async (type, id) => {
     try {
-      const url = type === 'contribution'
-        ? `/contributions/${id}/approve`
-        : `/contributions/requests/${id}/approve`;
-
-      await axios.post(url);
+      await axios.post(`/contributions/requests/${id}/approve`);
       setMessage('✅ Approved');
       loadData();
     } catch (err) {
@@ -67,15 +63,13 @@ const AdminDashboard = () => {
         <ul>
           {pendingContributions.map(contrib => (
             <li key={contrib.id} style={{ marginBottom: '0.5rem' }}>
-              <strong>{contrib.filename}</strong> by {contrib.username}
-              <button onClick={() => handleApprove('contribution', contrib.id)} style={{ marginLeft: '1rem' }}>
-                Approve
-              </button>
-              <button onClick={() => handleDecline('contribution', contrib.id)} style={{ marginLeft: '0.5rem' }}>
+              <strong>{contrib.branch || contrib.filename}</strong> by {contrib.username}
+              {/* Contributions are approved by merging them (Merge button) */}
+              <button onClick={() => handleDecline('contribution', contrib.id)} style={{ marginLeft: '1rem' }}>
                 Decline
               </button>
               <Link
-				  to={`/merge-conflict?repositoryId=${contrib.repositoryId}&branch=${contrib.branch}`}
+				  to={`/merge-conflict?repositoryId=${contrib.repositoryId}&branch=${encodeURIComponent(contrib.branch || '')}`}
 				  style={{ marginLeft: '0.5rem' }}
 				>
 				  <button>Merge</button>

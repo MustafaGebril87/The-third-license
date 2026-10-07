@@ -1,5 +1,6 @@
 package com.thethirdlicense.security;
 
+import com.thethirdlicense.services.RevokedTokenService;
 import com.thethirdlicense.services.UserDetailsServiceImpl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -23,10 +24,13 @@ public class AuthFilter extends OncePerRequestFilter {
 
     private final JWTUtil jwtUtil;
     private final UserDetailsServiceImpl userDetailsService;
+    private final RevokedTokenService revokedTokenService;
 
-    public AuthFilter(JWTUtil jwtUtil, UserDetailsServiceImpl userDetailsService) {
+    public AuthFilter(JWTUtil jwtUtil, UserDetailsServiceImpl userDetailsService,
+                      RevokedTokenService revokedTokenService) {
         this.jwtUtil = jwtUtil;
         this.userDetailsService = userDetailsService;
+        this.revokedTokenService = revokedTokenService;
     }
 
     @Override
@@ -35,7 +39,7 @@ public class AuthFilter extends OncePerRequestFilter {
 
         String token = extractToken(request);
 
-        if (token != null && jwtUtil.validateToken(token)) {
+        if (token != null && jwtUtil.validateAccessToken(token) && !revokedTokenService.isRevoked(token)) {
             UUID userId = jwtUtil.getUserIdFromToken(token);
             try {
                 UserPrincipal userPrincipal = (UserPrincipal) userDetailsService.loadUserById(userId);

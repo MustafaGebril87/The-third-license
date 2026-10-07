@@ -36,14 +36,8 @@ const ShareMarketplace = () => {
     setMessage('');
 
     try {
-      const successUrl = `${window.location.origin}/stripe/success?shareId=${share.id}`;
-      const cancelUrl  = `${window.location.origin}/stripe/cancel`;
-
-      const res = await axios.post(
-        `/shares/buy/${share.id}/stripe/create`,
-        null,
-        { params: { successUrl, cancelUrl } }
-      );
+      // Return URLs are built by the server from its configured frontend origin
+      const res = await axios.post(`/shares/buy/${share.id}/stripe/create`);
 
       const checkoutUrl = res?.data?.checkoutUrl;
       if (!checkoutUrl) {
@@ -89,7 +83,7 @@ const ShareMarketplace = () => {
               return (
                 <li key={s.id} className="border p-4 rounded shadow">
                   <div><strong>Company:</strong> {s.companyName || '—'}</div>
-                  <div><strong>Ownership:</strong> {s.percentage ?? '—'}%</div>
+                  <div><strong>Ownership:</strong> {s.percentage != null ? `${Number(s.percentage).toFixed(4)}%` : '—'}</div>
                   <div><strong>Price:</strong> {price > 0 ? `$${price.toFixed(2)}` : '—'}</div>
                   <div><strong>Seller:</strong> {s.ownerUsername || s.ownerId || '—'}</div>
 

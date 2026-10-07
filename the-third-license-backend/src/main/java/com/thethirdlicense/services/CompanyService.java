@@ -39,34 +39,52 @@ public class CompanyService {
 
     private final CompanyRepository companyRepository;
 	private final RepositoryRepository repositoryRepository;
+    private final GitWorkspace workspace;
+    private final ShareService shareService;
 
+    /** Units the founder receives when opening a company (= 100% until contributions are issued). */
+    @org.springframework.beans.factory.annotation.Value("${app.equity.initial-owner-units:1000000}")
+    private long initialOwnerUnits = 1_000_000;
 
     @Autowired
-    public CompanyService(CompanyRepository companyRepository, RepositoryRepository repositoryRepository) {
+    public CompanyService(CompanyRepository companyRepository, RepositoryRepository repositoryRepository,
+                          GitWorkspace workspace, ShareService shareService) {
         this.companyRepository = companyRepository;
         this.repositoryRepository = repositoryRepository;
+        this.workspace = workspace;
+        this.shareService = shareService;
     }
     public Company openCompany(Company company, User owner) throws GitAPIException, IOException, URISyntaxException {
-        // 1. Set owner and persist company
-        company.setOwner(owner);
-        Company savedCompany = companyRepository.save(company);
+        // The company name becomes a directory name, so it must be filesystem-safe
+        String name = company.getName() == null ? null : company.getName().trim();
+        if (name == null || name.length() > 50) {
+            throw new IllegalArgumentException("Company name must be 2-50 characters.");
+        }
+        GitWorkspace.requireSafeName(name);
+        if (companyRepository.existsByNameIgnoreCase(name)) {
+            throw new IllegalStateException("A company with this name already exists.");
+        }
+
+        // 1. Build a fresh entity (never trust ids/relations from the request) and persist it
+        Company newCompany = new Company(name, owner);
+        Company savedCompany = companyRepository.save(newCompany);
 
         // 2. Define repository paths
-        String repoPath = "C:\\repos\\origin\\" + company.getName() + ".git";
-        File repoDir = new File(repoPath);
+        File repoDir = workspace.originRepo(name);
+        String repoPath = repoDir.getAbsolutePath().replace(File.separatorChar, '/');
 
         if (!repoDir.exists()) {
             // 3. Initialize bare Git repository
             Git.init().setBare(true).setDirectory(repoDir).call();
 
             // 4. Create initial main branch in temp working repo
-            File tempRepoDir = new File("C:\\repos\\temp\\" + company.getName() + "-init");
+            File tempRepoDir = workspace.tempInitDir(name);
             tempRepoDir.mkdirs();
 
             try (Git tempGit = Git.init().setDirectory(tempRepoDir).call()) {
                 // Create a README.md file
                 File readme = new File(tempRepoDir, "README.md");
-                Files.writeString(readme.toPath(), "# " + company.getName());
+                Files.writeString(readme.toPath(), "# " + name);
 
                 tempGit.add().addFilepattern("README.md").call();
                 tempGit.commit()
@@ -123,11 +141,14 @@ public class CompanyService {
         // 8. Save the repository entity in the database
         Repository_ repository = new Repository_();
         repository.setId(UUID.randomUUID());
-        repository.setName(company.getName() + "-repo");
+        repository.setName(name + "-repo");
         repository.setGitUrl("file://" + repoPath);
         repository.setCompany(savedCompany);
         repository.setOwner(owner);
         repositoryRepository.save(repository);
+
+        // 9. The founder starts with 100% of the company
+        shareService.issueUnits(savedCompany, owner, initialOwnerUnits);
 
         return savedCompany;
     }

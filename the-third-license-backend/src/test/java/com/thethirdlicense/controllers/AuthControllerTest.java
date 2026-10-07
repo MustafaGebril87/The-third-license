@@ -40,6 +40,8 @@ class AuthControllerTest {
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private AuthenticationManager authenticationManager;
     @Mock private JWTUtil jwtUtil;
+    @Mock private com.thethirdlicense.services.RevokedTokenService revokedTokenService;
+    @Mock private com.thethirdlicense.services.LoginAttemptService loginAttemptService;
 
     @InjectMocks
     private AuthController controller;
@@ -189,7 +191,7 @@ class AuthControllerTest {
         when(jwtUtil.generateRefreshToken(user)).thenReturn("refresh-jwt");
 
         HttpServletResponse httpResponse = mock(HttpServletResponse.class);
-        ResponseEntity<?> response = controller.login(loginRequest("alice", "pass123"), httpResponse);
+        ResponseEntity<?> response = controller.login(loginRequest("alice", "pass123"), null, httpResponse);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         AuthResponse body = (AuthResponse) response.getBody();
@@ -199,8 +201,14 @@ class AuthControllerTest {
         assertThat(body.getId()).isEqualTo(user.getId());
         assertThat(body.getRoles()).contains("CONTRIBUTOR");
 
-        // Verify HttpOnly cookies were added (not raw token in the body)
-        verify(httpResponse, times(2)).addCookie(any());
+        // Verify HttpOnly + SameSite cookies were set (not raw token in the body)
+        org.mockito.ArgumentCaptor<String> cookies = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(httpResponse, times(2)).addHeader(eq("Set-Cookie"), cookies.capture());
+        assertThat(cookies.getAllValues()).allSatisfy(c -> {
+            assertThat(c).contains("HttpOnly");
+            assertThat(c).contains("SameSite=Lax");
+        });
+        verify(loginAttemptService).recordSuccess(eq("alice"), any());
     }
 
     // ── login: wrong password ─────────────────────────────────────────────────
@@ -212,9 +220,10 @@ class AuthControllerTest {
 
         HttpServletResponse httpResponse = mock(HttpServletResponse.class);
         assertThrows(BadCredentialsException.class,
-            () -> controller.login(loginRequest("alice", "wrong"), httpResponse));
+            () -> controller.login(loginRequest("alice", "wrong"), null, httpResponse));
 
         verify(userRepository, never()).findByUsername(anyString());
+        verify(loginAttemptService).recordFailure(eq("alice"), any());
     }
 
     // ── login: user not found after authentication ────────────────────────────
@@ -227,7 +236,7 @@ class AuthControllerTest {
 
         HttpServletResponse httpResponse = mock(HttpServletResponse.class);
         assertThrows(Exception.class,
-            () -> controller.login(loginRequest("ghost", "pass123"), httpResponse));
+            () -> controller.login(loginRequest("ghost", "pass123"), null, httpResponse));
     }
 
     // ── logout: clears cookies ────────────────────────────────────────────────
@@ -235,10 +244,63 @@ class AuthControllerTest {
     @Test
     void logout_clearsBothCookiesAndReturns200() {
         HttpServletResponse httpResponse = mock(HttpServletResponse.class);
-        ResponseEntity<?> response = controller.logout(httpResponse);
+        ResponseEntity<?> response = controller.logout(null, httpResponse);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         // Two cookies cleared: access_token + refresh_token
-        verify(httpResponse, times(2)).addCookie(any());
+        verify(httpResponse, times(2)).addHeader(eq("Set-Cookie"), org.mockito.ArgumentMatchers.contains("Max-Age=0"));
+    }
+
+    // ── logout: revokes tokens server-side ────────────────────────────────────
+
+    @Test
+    void logout_revokesAccessAndRefreshTokens() {
+        jakarta.servlet.http.HttpServletRequest httpRequest = mock(jakarta.servlet.http.HttpServletRequest.class);
+        when(httpRequest.getCookies()).thenReturn(new jakarta.servlet.http.Cookie[] {
+                new jakarta.servlet.http.Cookie("access_token", "acc"),
+                new jakarta.servlet.http.Cookie("refresh_token", "ref")});
+        when(jwtUtil.validateToken(anyString())).thenReturn(true);
+
+        controller.logout(httpRequest, mock(HttpServletResponse.class));
+
+        verify(revokedTokenService).revoke("acc");
+        verify(revokedTokenService).revoke("ref");
+    }
+
+    // ── login: blocked after too many failures ────────────────────────────────
+
+    @Test
+    void login_tooManyFailures_throwsWithoutAuthenticating() {
+        when(loginAttemptService.isBlocked(eq("alice"), any())).thenReturn(true);
+
+        assertThrows(com.thethirdlicense.exceptions.TooManyAttemptsException.class,
+            () -> controller.login(loginRequest("alice", "x"), null, mock(HttpServletResponse.class)));
+
+        verify(authenticationManager, never()).authenticate(any());
+    }
+
+    // ── refresh: an access token is not accepted as a refresh token ──────────
+
+    @Test
+    void refresh_withoutValidRefreshToken_returns401() {
+        jakarta.servlet.http.HttpServletRequest httpRequest = mock(jakarta.servlet.http.HttpServletRequest.class);
+        when(httpRequest.getCookies()).thenReturn(new jakarta.servlet.http.Cookie[] {
+                new jakarta.servlet.http.Cookie("refresh_token", "actually-an-access-token")});
+        when(jwtUtil.validateRefreshToken("actually-an-access-token")).thenReturn(false);
+
+        ResponseEntity<?> response = controller.refresh(httpRequest, mock(HttpServletResponse.class));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        verify(jwtUtil, never()).generateToken(any());
+    }
+
+    // ── register: path-unsafe usernames rejected ──────────────────────────────
+
+    @Test
+    void register_usernameWithPathCharacters_returns400() {
+        ResponseEntity<?> response = controller.register(registerRequest("../../evil", "e@test.com", "password123"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(userRepository, never()).save(any());
     }
 }
